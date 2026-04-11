@@ -1,0 +1,959 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DX Monitor</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Exo+2:wght@300;400;600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#0a0e14;--bg2:#0f1520;--bg3:#131c2b;--border:#1e2d45;
+  --accent:#00d4ff;--warn:#ffb300;--green:#00cc80;--red:#ff3d57;
+  --text:#c8daf0;--text-dim:#7a9ab8;--text-hi:#e8f4ff;--text-label:#a0bcd4;
+  --mono:'Share Tech Mono',monospace;--sans:'Exo 2',sans-serif;
+  --scanline:rgba(0,0,0,0.07);--shadow:rgba(0,0,0,0.4);
+}
+body.light{
+  --bg:#eef2f7;--bg2:#ffffff;--bg3:#f4f7fb;--border:#c0d0e0;
+  --accent:#0070a0;--warn:#b06000;--green:#006e3a;--red:#bb1122;
+  --text:#1a2a3a;--text-dim:#4a6070;--text-hi:#080e18;--text-label:#2a4060;
+  --scanline:rgba(0,0,0,0.012);--shadow:rgba(0,0,0,0.12);
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:14px;line-height:1.5;min-height:100vh;transition:background .25s,color .25s}
+body::before{content:'';position:fixed;inset:0;background:repeating-linear-gradient(0deg,transparent,transparent 2px,var(--scanline) 2px,var(--scanline) 4px);pointer-events:none;z-index:9999}
+header{background:var(--bg2);border-bottom:2px solid var(--border);padding:0 20px;height:58px;display:flex;align-items:center;gap:12px;position:sticky;top:0;z-index:100;box-shadow:0 2px 8px var(--shadow)}
+.logo{font-family:var(--mono);font-size:16px;color:var(--accent);letter-spacing:2px;display:flex;align-items:center;gap:8px;white-space:nowrap}
+.logo-sep{color:var(--border)}
+.logo-call{color:var(--text-hi);font-size:16px;letter-spacing:2px}
+.header-right{margin-left:auto;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.hdr-btn{display:flex;align-items:center;gap:5px;padding:5px 11px;border-radius:4px;border:1px solid var(--border);background:var(--bg3);color:var(--text-label);font-family:var(--mono);font-size:11px;letter-spacing:1px;cursor:pointer;transition:border-color .15s,color .15s;white-space:nowrap}
+.hdr-btn:hover{border-color:var(--accent);color:var(--accent)}
+.hdr-btn.active{border-color:var(--accent);color:var(--accent);background:rgba(0,160,220,0.08)}
+.hdr-sep{width:1px;height:24px;background:var(--border);flex-shrink:0}
+.badge-monitor{display:flex;align-items:center;gap:6px;font-family:var(--mono);font-size:11px;letter-spacing:1px;padding:4px 10px;border-radius:3px;border:1px solid var(--border)}
+.badge-monitor.alive{border-color:var(--green);color:var(--green)}
+.badge-monitor.dead{border-color:var(--red);color:var(--red)}
+.dot{width:7px;height:7px;border-radius:50%;background:currentColor}
+.dot.pulse{animation:pulse 1.4s ease-in-out infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
+.refresh-tag{font-family:var(--mono);font-size:10px;color:var(--text-dim)}
+.main{display:grid;grid-template-columns:1fr 1fr 1fr;gap:1px;background:var(--border);min-height:calc(100vh - 58px)}
+.card{background:var(--bg2);padding:18px 20px;position:relative;overflow:hidden}
+.card::after{content:'';position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,var(--accent) 0%,transparent 60%);opacity:.4}
+.card.span2{grid-column:span 2}.card.span3{grid-column:span 3}
+.card-title{font-family:var(--mono);font-size:12px;letter-spacing:2px;color:var(--text-dim);text-transform:uppercase;margin-bottom:16px;display:flex;align-items:center;gap:8px;font-weight:700}
+.card-title::after{content:'';flex:1;height:1px;background:var(--border)}
+.stat-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.stat{background:var(--bg3);border:1px solid var(--border);border-radius:4px;padding:11px 13px}
+.stat-label{font-size:11px;color:var(--text-label);font-weight:600;margin-bottom:3px}
+.stat-value{font-family:var(--mono);font-size:26px;color:var(--accent);line-height:1}
+.stat-value.green{color:var(--green)}.stat-value.warn{color:var(--warn)}
+.edit-row{display:flex;align-items:center;gap:6px;margin-bottom:6px}
+.edit-label{font-family:var(--mono);font-size:11px;color:var(--text-label);min-width:110px;flex-shrink:0;font-weight:600}
+.edit-input{font-family:var(--mono);font-size:12px;color:var(--text-hi);background:var(--bg3);border:1px solid var(--border);border-radius:3px;padding:4px 8px;flex:1;min-width:0;transition:border-color .15s,box-shadow .15s;outline:none}
+.edit-input:focus{border-color:var(--accent);box-shadow:0 0 0 2px rgba(0,160,220,0.15)}
+.edit-input.saved{border-color:var(--green)!important}
+.edit-input.error{border-color:var(--red)!important}
+.edit-hint{font-family:var(--mono);font-size:10px;color:var(--text-dim);margin-top:2px;margin-left:116px;margin-bottom:4px}
+.input-wrap{position:relative;flex:1;min-width:0;display:flex;align-items:center}
+.input-wrap .edit-input{padding-right:28px;width:100%}
+.btn-eye{position:absolute;right:4px;background:none;border:none;cursor:pointer;color:var(--text-dim);font-size:13px;padding:2px;transition:color .15s}
+.btn-eye:hover{color:var(--accent)}
+.btn-browse{font-family:var(--mono);font-size:10px;padding:4px 8px;border-radius:3px;border:1px solid var(--border);background:var(--bg3);color:var(--text-label);cursor:pointer;white-space:nowrap;flex-shrink:0;transition:border-color .15s,color .15s}
+.btn-browse:hover{border-color:var(--accent);color:var(--accent)}
+.info-row{display:flex;gap:8px;margin-bottom:5px;font-family:var(--mono);font-size:12px}
+.info-key{color:var(--text-label);min-width:110px;flex-shrink:0;font-weight:600}
+.info-val{color:var(--text-hi)}.info-val.accent{color:var(--accent)}
+.cluster-row{display:flex;align-items:center;justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--border);font-family:var(--mono);font-size:12px}
+.cluster-row:last-child{border-bottom:none}
+.cluster-key{color:var(--text-label);font-weight:600}
+.cluster-val{color:var(--text-hi)}
+.cluster-val.ok{color:var(--green)}.cluster-val.err{color:var(--red)}.cluster-val.warn{color:var(--warn)}
+.tg-section{margin-bottom:10px}
+.tg-section-title{font-size:11px;color:var(--text-dim);letter-spacing:1.5px;text-transform:uppercase;margin-bottom:8px;font-weight:700}
+.btn-action{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;margin-top:8px;padding:9px 18px;background:transparent;font-family:var(--mono);font-size:12px;letter-spacing:1px;cursor:pointer;border-radius:3px;text-transform:uppercase;transition:background .15s,box-shadow .15s}
+.btn-action:disabled{opacity:.5;cursor:not-allowed}
+.btn-connect{border:1px solid var(--green);color:var(--green)}
+.btn-connect:hover:not(:disabled){background:rgba(0,160,80,0.08)}
+.btn-disconnect{border:1px solid var(--red);color:var(--red)}
+.btn-disconnect:hover:not(:disabled){background:rgba(180,20,40,0.08)}
+.btn-tg{border:1px solid var(--accent);color:var(--accent)}
+.btn-tg:hover:not(:disabled){background:rgba(0,160,220,0.08);box-shadow:0 0 12px rgba(0,160,220,0.15)}
+.action-result{margin-top:8px;padding:9px 12px;border-radius:3px;font-family:var(--mono);font-size:11px;display:none}
+.action-result.ok{background:rgba(0,160,80,0.1);border:1px solid var(--green);color:var(--green)}
+.action-result.err{background:rgba(180,20,40,0.1);border:1px solid var(--red);color:var(--red)}
+/* modal explorador */
+.modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:500;align-items:center;justify-content:center}
+.modal-overlay.open{display:flex}
+.modal-box{background:var(--bg2);border:1px solid var(--border);border-radius:6px;padding:20px;width:520px;max-width:95vw;max-height:80vh;display:flex;flex-direction:column;gap:12px}
+.modal-title{font-family:var(--mono);font-size:12px;letter-spacing:2px;color:var(--accent);text-transform:uppercase}
+.modal-path{font-family:var(--mono);font-size:11px;color:var(--text-hi);padding:5px 8px;background:var(--bg3);border:1px solid var(--border);border-radius:3px;word-break:break-all}
+.modal-list{flex:1;overflow-y:auto;border:1px solid var(--border);border-radius:3px;min-height:180px;max-height:340px}
+.modal-item{display:flex;align-items:center;gap:8px;padding:8px 10px;font-family:var(--mono);font-size:12px;cursor:pointer;border-bottom:1px solid rgba(100,140,180,0.08);transition:background .1s}
+.modal-item:last-child{border-bottom:none}
+.modal-item:hover{background:rgba(0,160,220,0.07)}
+.modal-item.up{color:var(--warn)}.modal-item.dir{color:var(--accent)}.modal-item.drive{color:var(--green)}.modal-item.empty{color:var(--text-dim);cursor:default}
+.modal-actions{display:flex;gap:8px;justify-content:flex-end}
+.modal-btn{font-family:var(--mono);font-size:11px;padding:6px 14px;border-radius:3px;border:1px solid var(--border);background:var(--bg3);color:var(--text-label);cursor:pointer;transition:all .15s}
+.modal-btn:hover{border-color:var(--accent);color:var(--accent)}
+.modal-btn.primary{border-color:var(--accent);color:var(--accent)}
+/* alertas */
+.alerts-table{width:100%;border-collapse:collapse}
+.alerts-table th{text-align:left;font-family:var(--mono);font-size:11px;color:var(--text-label);letter-spacing:1px;padding:0 6px 9px;border-bottom:1px solid var(--border);font-weight:700}
+.alerts-table td{padding:6px;font-family:var(--mono);font-size:11px;color:var(--text);border-bottom:1px solid rgba(100,140,180,0.12);vertical-align:middle}
+.alerts-table tr:last-child td{border-bottom:none}
+.alerts-table tr:hover td{background:rgba(0,160,220,0.04)}
+.tipo-badge{display:inline-block;padding:2px 6px;border-radius:2px;font-size:10px;white-space:nowrap;font-weight:700}
+.tipo-badge.pais_nuevo{background:rgba(0,160,220,0.12);color:var(--accent);border:1px solid rgba(0,160,220,0.35)}
+.tipo-badge.pais_trabajado{background:rgba(180,120,0,0.12);color:var(--warn);border:1px solid rgba(180,120,0,0.35)}
+.tipo-badge.banda_nueva{background:rgba(0,140,70,0.12);color:var(--green);border:1px solid rgba(0,140,70,0.35)}
+.tipo-badge.modo_nuevo{background:rgba(180,20,40,0.12);color:var(--red);border:1px solid rgba(180,20,40,0.35)}
+.empty-msg{color:var(--text-dim);font-family:var(--mono);font-size:12px;text-align:center;padding:20px 0}
+/* filtros */
+.filters-wrap{display:flex;flex-direction:column;gap:9px}
+.fsec{border:1px solid var(--border);border-radius:5px;overflow:hidden}
+.fsec-head{background:var(--bg3);padding:5px 10px;font-family:var(--mono);font-size:10px;letter-spacing:2px;text-transform:uppercase;color:var(--text-dim);display:flex;align-items:center;justify-content:space-between}
+.fsec-body{padding:8px 10px;display:flex;flex-wrap:wrap;gap:5px}
+.pill{display:inline-flex;align-items:center;padding:3px 9px;border-radius:20px;border:1px solid var(--border);background:var(--bg3);color:var(--text-dim);font-family:var(--mono);font-size:11px;cursor:pointer;user-select:none;transition:all .15s;white-space:nowrap}
+.pill:hover{border-color:var(--accent);color:var(--accent)}
+.pill.on{background:rgba(0,180,220,0.12);border-color:var(--accent);color:var(--accent)}
+.pill.zona-r1.on{background:rgba(0,180,100,0.12);border-color:var(--green);color:var(--green)}
+.pill.zona-r2.on{background:rgba(200,140,0,0.12);border-color:var(--warn);color:var(--warn)}
+.pill.zona-r3.on{background:rgba(180,20,40,0.12);border-color:var(--red);color:var(--red)}
+.pill.modo-CW.on{background:rgba(180,100,220,0.12);border-color:#b060dc;color:#b060dc}
+.pill.modo-SSB.on{background:rgba(0,180,220,0.12);border-color:var(--accent);color:var(--accent)}
+.pill.modo-RTTY.on{background:rgba(200,140,0,0.12);border-color:var(--warn);color:var(--warn)}
+.pill.modo-FT8.on{background:rgba(0,180,100,0.12);border-color:var(--green);color:var(--green)}
+.pill.modo-FT4.on{background:rgba(180,20,40,0.12);border-color:var(--red);color:var(--red)}
+.alert-types-grid{display:flex;flex-direction:column;gap:4px;width:100%}
+.atype-row{display:flex;align-items:center;justify-content:space-between;padding:4px 8px;border-radius:3px;background:var(--bg3);border:1px solid var(--border)}
+.atype-label{font-size:11px;color:var(--text-hi);font-weight:600}
+.atype-label small{display:block;font-size:9px;color:var(--text-label);font-weight:400;margin-top:1px}
+.toggle{position:relative;display:inline-block;width:36px;height:18px;flex-shrink:0}
+.toggle input{opacity:0;width:0;height:0}
+.toggle-slider{position:absolute;inset:0;background:var(--border);border-radius:20px;cursor:pointer;transition:background .2s}
+.toggle-slider::before{content:'';position:absolute;width:12px;height:12px;left:3px;top:3px;background:var(--text-dim);border-radius:50%;transition:transform .2s,background .2s}
+.toggle input:checked+.toggle-slider{background:rgba(0,160,80,0.2);border:1px solid var(--green)}
+.toggle input:checked+.toggle-slider::before{transform:translateX(18px);background:var(--green)}
+.fsec-btn{font-family:var(--mono);font-size:9px;letter-spacing:1px;padding:2px 7px;border-radius:3px;border:1px solid var(--border);background:transparent;color:var(--text-dim);cursor:pointer;transition:all .15s}
+.fsec-btn:hover{border-color:var(--accent);color:var(--accent)}
+.log-box{background:var(--bg);border:1px solid var(--border);border-radius:3px;padding:12px;height:210px;overflow-y:auto;font-family:var(--mono);font-size:11px;line-height:1.7}
+.log-box::-webkit-scrollbar{width:4px}
+.log-box::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px}
+.log-line{white-space:pre-wrap;word-break:break-all}
+.log-line.INFO{color:var(--text)}.log-line.WARNING{color:var(--warn)}.log-line.ERROR{color:var(--red);font-weight:bold}.log-line.DEBUG{color:var(--text-dim)}
+.spin{display:inline-block;width:12px;height:12px;border:2px solid rgba(0,160,220,0.3);border-top-color:var(--accent);border-radius:50%;animation:spin .7s linear infinite;vertical-align:middle;margin-right:4px}
+@keyframes spin{to{transform:rotate(360deg)}}
+@media(max-width:1200px){.main{grid-template-columns:1fr 1fr}.card.span3{grid-column:span 2}}
+@media(max-width:700px){.main{grid-template-columns:1fr}.card.span2,.card.span3{grid-column:span 1}header{flex-wrap:wrap;height:auto;padding:8px 12px;gap:6px}}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">
+    DX MONITOR
+    <span class="logo-sep">·</span>
+    <span class="logo-call" id="hdr-call">NOCALL</span>
+  </div>
+  <div class="header-right">
+    <span class="refresh-tag" id="refresh-tag">—</span>
+    <button class="hdr-btn active" id="btn-es" onclick="setLang('es')">🇪🇸 ES</button>
+    <button class="hdr-btn"        id="btn-en" onclick="setLang('en')">🇬🇧 EN</button>
+    <div class="hdr-sep"></div>
+    <button class="hdr-btn" id="btn-theme" onclick="toggleTheme()">☀️</button>
+    <div class="hdr-sep"></div>
+    <div class="badge-monitor dead" id="badge-monitor">
+      <div class="dot" id="dot-monitor"></div>
+      <span id="badge-txt">—</span>
+    </div>
+  </div>
+</header>
+
+<!-- Modal explorador Windows -->
+<div class="modal-overlay" id="dir-modal">
+  <div class="modal-box">
+    <div class="modal-title" data-i="dir_title">Seleccionar directorio</div>
+    <div class="modal-path" id="dir-path">Este equipo</div>
+    <div class="modal-list" id="dir-list"></div>
+    <div class="modal-actions">
+      <button class="modal-btn" onclick="closeDirModal()" data-i="dir_cancel">Cancelar</button>
+      <button class="modal-btn primary" id="btn-select-dir" onclick="confirmDir()" data-i="dir_select">Seleccionar</button>
+    </div>
+  </div>
+</div>
+
+<div class="main">
+
+  <!-- HRD LOG -->
+  <div class="card">
+    <div class="card-title">📋 <span data-i="log_hrd"></span></div>
+    <div class="stat-grid" style="margin-bottom:14px">
+      <div class="stat"><div class="stat-label" data-i="qsos_total"></div><div class="stat-value" id="s-qsos">—</div></div>
+      <div class="stat"><div class="stat-label" data-i="dxcc_worked"></div><div class="stat-value green" id="s-worked">—</div></div>
+      <div class="stat"><div class="stat-label" data-i="dxcc_conf"></div><div class="stat-value" id="s-conf">—</div></div>
+      <div class="stat"><div class="stat-label" data-i="pfx_table"></div><div class="stat-value warn" id="s-pfx">—</div></div>
+    </div>
+    <div class="edit-row">
+      <span class="edit-label" data-i="cfg_callsign"></span>
+      <input class="edit-input" id="cfg-callsign" type="text" placeholder="EA3TB"
+             onblur="saveCfg('callsign',this.value,this)">
+    </div>
+    <div class="edit-row">
+      <span class="edit-label" data-i="cfg_locator"></span>
+      <input class="edit-input" id="cfg-locator" type="text" placeholder="JN11CP"
+             onblur="saveCfg('locator',this.value,this)">
+    </div>
+    <div class="edit-hint" id="locator-hint"></div>
+    <div class="edit-row">
+      <span class="edit-label" data-i="cfg_xml_dir"></span>
+      <input class="edit-input" id="cfg-xml-dir" type="text" placeholder="C:\Users\..."
+             onblur="saveCfg('hrd_xml_dir',this.value,this)" style="flex:1">
+      <button class="btn-browse" onclick="openDirModal()">📂</button>
+    </div>
+    <div class="info-row" style="margin-top:8px">
+      <span class="info-key" data-i="big_cty"></span><span class="info-val" id="i-cty">—</span>
+    </div>
+    <div class="info-row">
+      <span class="info-key" data-i="pfx_cty"></span><span class="info-val" id="i-pfxcty">—</span>
+    </div>
+    <div class="info-row">
+      <span class="info-key" data-i="xml_active"></span><span class="info-val accent" id="i-xml">—</span>
+    </div>
+  </div>
+
+  <!-- DX CLUSTER -->
+  <div class="card">
+    <div class="card-title">📡 <span data-i="dx_cluster"></span></div>
+    <div class="cluster-row"><span class="cluster-key" data-i="c_host"></span><span class="cluster-val" id="c-host">—</span></div>
+    <div class="cluster-row"><span class="cluster-key" data-i="c_estado"></span><span class="cluster-val" id="c-conn">—</span></div>
+    <div class="cluster-row"><span class="cluster-key" data-i="c_last_spot"></span><span class="cluster-val" id="c-last">—</span></div>
+    <div class="cluster-row"><span class="cluster-key" data-i="c_errors"></span><span class="cluster-val" id="c-err">—</span></div>
+    <div class="cluster-row"><span class="cluster-key" data-i="c_updated"></span><span class="cluster-val" id="c-upd">—</span></div>
+    <button class="btn-action btn-connect"    id="btn-connect"    onclick="clusterCmd('connect')">🔌 <span data-i="c_connect"></span></button>
+    <button class="btn-action btn-disconnect" id="btn-disconnect" onclick="clusterCmd('disconnect')" style="display:none">⛔ <span data-i="c_disconnect"></span></button>
+    <div class="action-result" id="cluster-res"></div>
+    <div style="margin-top:12px;border-top:1px solid var(--border);padding-top:12px">
+      <div class="tg-section-title" data-i="cluster_config"></div>
+      <div class="edit-row">
+        <span class="edit-label" data-i="cfg_cl_host"></span>
+        <input class="edit-input" id="cfg-cl-host" type="text" onblur="saveCfg('cluster_host',this.value,this)">
+      </div>
+      <div class="edit-row">
+        <span class="edit-label" data-i="cfg_cl_port"></span>
+        <input class="edit-input" id="cfg-cl-port" type="number" style="max-width:90px" onblur="saveCfg('cluster_port',this.value,this)">
+      </div>
+      <div class="edit-row">
+        <span class="edit-label" data-i="cfg_cl_login"></span>
+        <input class="edit-input" id="cfg-cl-login" type="text" onblur="saveCfg('cluster_login',this.value,this)">
+      </div>
+      <div class="edit-row">
+        <span class="edit-label" data-i="cfg_cl_pass"></span>
+        <div class="input-wrap">
+          <input class="edit-input" id="cfg-cl-pass" type="password" onblur="saveCfg('cluster_password',this.value,this)">
+          <button class="btn-eye" onclick="toggleEye('cfg-cl-pass',this)">👁</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- TELEGRAM -->
+  <div class="card">
+    <div class="card-title">✈️ Telegram</div>
+    <div class="tg-section">
+      <div class="tg-section-title" data-i="tg_config"></div>
+      <div class="edit-row">
+        <span class="edit-label" data-i="tg_token"></span>
+        <div class="input-wrap">
+          <input class="edit-input" id="cfg-tg-token" type="password" placeholder="bot token"
+                 onblur="saveCfg('telegram_token',this.value,this)">
+          <button class="btn-eye" onclick="toggleEye('cfg-tg-token',this)">👁</button>
+        </div>
+      </div>
+      <div class="edit-row">
+        <span class="edit-label">Chat ID</span>
+        <input class="edit-input" id="cfg-tg-chatid" type="text" placeholder="chat id"
+               onblur="saveCfg('telegram_chat_id',this.value,this)">
+      </div>
+      <div class="edit-row">
+        <span class="edit-label" data-i="tg_lang"></span>
+        <select class="edit-input" id="cfg-alert-lang" onchange="saveCfg('alert_lang',this.value,this)" style="cursor:pointer">
+          <option value="es">🇪🇸 Español</option>
+          <option value="en">🇬🇧 English</option>
+        </select>
+      </div>
+      <div class="edit-row">
+        <span class="edit-label" data-i="tg_timezone"></span>
+        <select class="edit-input" id="cfg-timezone" onchange="saveCfg('timezone',this.value,this)" style="cursor:pointer">
+        </select>
+      </div>
+      <div class="edit-row" id="tz-custom-row" style="display:none">
+        <span class="edit-label" data-i="tg_tz_custom"></span>
+        <input class="edit-input" id="cfg-tz-custom" type="text" placeholder="America/New_York"
+               onblur="saveTzCustom(this.value,this)">
+      </div>
+      <div class="edit-row">
+        <span class="edit-label" data-i="tg_time_mode"></span>
+        <select class="edit-input" id="cfg-time-mode" onchange="saveCfg('time_mode',this.value,this)" style="cursor:pointer">
+          <option value="local" data-i-opt="tg_time_local">Local</option>
+          <option value="utc">UTC</option>
+        </select>
+      </div>
+    </div>
+    <button class="btn-action btn-tg" id="btn-test" onclick="testTelegram()">
+      📨 <span data-i="tg_send_test"></span>
+    </button>
+    <div class="action-result" id="tg-res"></div>
+  </div>
+
+  <!-- ALERTAS -->
+  <div class="card span2">
+    <div class="card-title">🔔 <span data-i="last_alerts"></span></div>
+    <table class="alerts-table">
+      <thead><tr>
+        <th id="th-time" data-i="th_time"></th><th data-i="th_call"></th><th data-i="th_dxcc"></th>
+        <th data-i="th_freq"></th><th data-i="th_band"></th><th data-i="th_mode"></th><th data-i="th_type"></th>
+      </tr></thead>
+      <tbody id="alerts-body"></tbody>
+    </table>
+  </div>
+
+  <!-- FILTROS -->
+  <div class="card">
+    <div class="card-title">🚩 <span data-i="alert_filters"></span></div>
+    <div class="filters-wrap" id="filters-wrap"></div>
+  </div>
+
+  <!-- LOG -->
+  <div class="card span3">
+    <div class="card-title">📄 <span data-i="service_log"></span></div>
+    <div class="log-box" id="log-box"><div class="log-line">—</div></div>
+  </div>
+
+</div>
+<script>
+const I18N={
+es:{
+  log_hrd:"Log HRD",qsos_total:"QSOs totales",dxcc_worked:"DXCC trabajados",
+  dxcc_conf:"DXCC confirmados",pfx_table:"Prefijos tabla",
+  xml_active:"XML activo:",big_cty:"Big CTY:",pfx_cty:"Prefijos cty.dat:",
+  cfg_callsign:"Indicativo:",cfg_locator:"Locator:",cfg_xml_dir:"Directorio XML:",
+  dx_cluster:"DX Cluster",c_host:"Host",c_estado:"Estado",
+  c_last_spot:"Último spot",c_errors:"Errores reconexión",c_updated:"Actualizado",
+  c_connect:"Conectar",c_disconnect:"Desconectar",
+  cluster_config:"Configuración cluster",
+  cfg_cl_host:"Host:",cfg_cl_port:"Puerto:",cfg_cl_login:"Login:",cfg_cl_pass:"Password:",
+  tg_config:"Configuración",tg_token:"Token bot:",tg_lang:"Idioma alertas:",
+  tg_timezone:"Zona horaria:",tg_tz_custom:"Timezone:",tz_custom:"Escribir manualmente…",
+  tg_time_mode:"Hora:",tg_time_local:"Local",
+  tg_send_test:"Enviar mensaje de prueba",
+  last_alerts:"Últimas alertas enviadas",
+  th_time:"Hora",th_time_local:"Local",th_call:"Indicativo",th_dxcc:"DXCC",
+  th_freq:"Freq",th_band:"Banda",th_mode:"Modo",th_type:"Tipo",
+  no_alerts:"Sin alertas recientes",alert_filters:"Filtros de alerta",
+  service_log:"Log del servicio (últimas líneas)",
+  theme_light:"Claro",theme_dark:"Oscuro",
+  monitor_active:"MONITOR ACTIVO",monitor_offline:"MONITOR OFFLINE",
+  connected:"✓ CONECTADO",disconnected:"✗ DESCONECTADO",
+  test_ok:"Mensaje enviado",test_err:"Error",sending:"Enviando…",
+  connect_ok:"Conexión iniciada",disconnect_ok:"Desconectado",
+  f_iaru:"Zona IARU",
+  f_r1:"R1 — Europa / África",f_r2:"R2 — Américas",f_r3:"R3 — Asia Pacífico",
+  f_bandas:"Bandas activas",f_modos:"Modos activos",f_tipos:"Tipos de alerta",
+  f_all:"Todo",f_none:"Nada",
+  f_pais_nuevo:"País nuevo",f_pais_nuevo_d:"DXCC nunca trabajado",
+  f_pais_trabajado:"País trabajado",f_pais_trabajado_d:"Trabajado pero sin QSL",
+  f_banda_nueva:"Banda nueva",f_banda_nueva_d:"DXCC en banda no trabajada",
+  f_banda_sin_qsl:"Banda sin QSL",f_banda_sin_qsl_d:"Banda trabajada, QSL pendiente",
+  f_modo_nuevo:"Modo nuevo",f_modo_nuevo_d:"DXCC/banda en modo no trabajado",
+  f_modo_sin_qsl:"Modo sin QSL",f_modo_sin_qsl_d:"Modo trabajado, QSL pendiente",
+  t_pais_nuevo:"PAÍS NUEVO",t_pais_trabajado:"PAÍS TRABAJADO",
+  t_banda_nueva:"BANDA NUEVA",t_banda_sin_qsl:"BANDA SIN QSL",
+  t_modo_nuevo:"MODO NUEVO",t_modo_sin_qsl:"MODO SIN QSL",
+  loc_hint:"Lat/Lon:",saved:"✓ Guardado",
+  dir_title:"Seleccionar directorio",dir_cancel:"Cancelar",dir_select:"Seleccionar",
+},
+en:{
+  log_hrd:"HRD Log",qsos_total:"Total QSOs",dxcc_worked:"DXCC worked",
+  dxcc_conf:"DXCC confirmed",pfx_table:"Prefix table",
+  xml_active:"Active XML:",big_cty:"Big CTY:",pfx_cty:"cty.dat prefixes:",
+  cfg_callsign:"Callsign:",cfg_locator:"Locator:",cfg_xml_dir:"XML directory:",
+  dx_cluster:"DX Cluster",c_host:"Host",c_estado:"Status",
+  c_last_spot:"Last spot",c_errors:"Reconnect errors",c_updated:"Updated",
+  c_connect:"Connect",c_disconnect:"Disconnect",
+  cluster_config:"Cluster configuration",
+  cfg_cl_host:"Host:",cfg_cl_port:"Port:",cfg_cl_login:"Login:",cfg_cl_pass:"Password:",
+  tg_config:"Configuration",tg_token:"Bot token:",tg_lang:"Alert language:",
+  tg_timezone:"Timezone:",tg_tz_custom:"Timezone:",tz_custom:"Type manually…",
+  tg_time_mode:"Time:",tg_time_local:"Local",
+  tg_send_test:"Send test message",
+  last_alerts:"Last alerts sent",
+  th_time:"Time",th_time_local:"Local",th_call:"Callsign",th_dxcc:"DXCC",
+  th_freq:"Freq",th_band:"Band",th_mode:"Mode",th_type:"Type",
+  no_alerts:"No recent alerts",alert_filters:"Alert filters",
+  service_log:"Service log (last lines)",
+  theme_light:"Light",theme_dark:"Dark",
+  monitor_active:"MONITOR ACTIVE",monitor_offline:"MONITOR OFFLINE",
+  connected:"✓ CONNECTED",disconnected:"✗ DISCONNECTED",
+  test_ok:"Message sent",test_err:"Error",sending:"Sending…",
+  connect_ok:"Connection started",disconnect_ok:"Disconnected",
+  f_iaru:"IARU Zone",
+  f_r1:"R1 — Europe / Africa",f_r2:"R2 — Americas",f_r3:"R3 — Asia Pacific",
+  f_bandas:"Active bands",f_modos:"Active modes",f_tipos:"Alert types",
+  f_all:"All",f_none:"None",
+  f_pais_nuevo:"New country",f_pais_nuevo_d:"DXCC never worked",
+  f_pais_trabajado:"Worked country",f_pais_trabajado_d:"Worked but no QSL",
+  f_banda_nueva:"New band",f_banda_nueva_d:"DXCC on unworked band",
+  f_banda_sin_qsl:"Band no QSL",f_banda_sin_qsl_d:"Band worked, QSL pending",
+  f_modo_nuevo:"New mode",f_modo_nuevo_d:"DXCC/band on unworked mode",
+  f_modo_sin_qsl:"Mode no QSL",f_modo_sin_qsl_d:"Mode worked, QSL pending",
+  t_pais_nuevo:"NEW COUNTRY",t_pais_trabajado:"WORKED COUNTRY",
+  t_banda_nueva:"NEW BAND",t_banda_sin_qsl:"BAND NO QSL",
+  t_modo_nuevo:"NEW MODE",t_modo_sin_qsl:"MODE NO QSL",
+  loc_hint:"Lat/Lon:",saved:"✓ Saved",
+  dir_title:"Select directory",dir_cancel:"Cancel",dir_select:"Select",
+}};
+
+let _lang=localStorage.getItem("dx_lang")||"es";
+let _theme=localStorage.getItem("dx_theme")||"dark";
+let _config=null,_flags=null,_flagTimer=null;
+const ALL_BANDS=["160m","80m","60m","40m","30m","20m","17m","15m","12m","10m","6m","4m","2m","70cm","23cm"];
+const ALL_MODES=["CW","SSB","RTTY","FT8","FT4"];
+const FLAG_TYPES=["pais_nuevo","pais_trabajado","banda_nueva","banda_sin_qsl","modo_nuevo","modo_sin_qsl"];
+
+function t(k){return(I18N[_lang]||{})[k]||k;}
+
+// ── Datos timezone bilingüe ───────────────────────────────────────────────────
+const TZ_GROUPS = [
+  { es:"── UTC ──",           en:"── UTC ──",            zones:[
+    {v:"UTC", l:"UTC"}
+  ]},
+  { es:"── Europa ──",        en:"── Europe ──",          zones:[
+    {v:"Europe/London",              l:"London (GMT/BST)"},
+    {v:"Europe/Lisbon",              l:"Lisbon (WET/WEST)"},
+    {v:"Europe/Madrid",              l:"Madrid (CET/CEST)"},
+    {v:"Europe/Paris",               l:"Paris (CET/CEST)"},
+    {v:"Europe/Berlin",              l:"Berlin (CET/CEST)"},
+    {v:"Europe/Rome",                l:"Rome (CET/CEST)"},
+    {v:"Europe/Amsterdam",           l:"Amsterdam (CET/CEST)"},
+    {v:"Europe/Brussels",            l:"Brussels (CET/CEST)"},
+    {v:"Europe/Warsaw",              l:"Warsaw (CET/CEST)"},
+    {v:"Europe/Helsinki",            l:"Helsinki (EET/EEST)"},
+    {v:"Europe/Athens",              l:"Athens (EET/EEST)"},
+    {v:"Europe/Bucharest",           l:"Bucharest (EET/EEST)"},
+    {v:"Europe/Moscow",              l:"Moscow (MSK)"},
+  ]},
+  { es:"── América Norte ──", en:"── North America ──",  zones:[
+    {v:"America/New_York",           l:"New York (ET)"},
+    {v:"America/Chicago",            l:"Chicago (CT)"},
+    {v:"America/Denver",             l:"Denver (MT)"},
+    {v:"America/Los_Angeles",        l:"Los Angeles (PT)"},
+    {v:"America/Toronto",            l:"Toronto (ET)"},
+    {v:"America/Vancouver",          l:"Vancouver (PT)"},
+    {v:"America/Mexico_City",        l:"Mexico City (CT)"},
+    {v:"America/Anchorage",          l:"Anchorage (AKT)"},
+    {v:"Pacific/Honolulu",           l:"Honolulu (HST)"},
+  ]},
+  { es:"── América Sur ──",   en:"── South America ──",  zones:[
+    {v:"America/Sao_Paulo",          l:"São Paulo (BRT)"},
+    {v:"America/Argentina/Buenos_Aires", l:"Buenos Aires (ART)"},
+    {v:"America/Santiago",           l:"Santiago (CLT)"},
+    {v:"America/Bogota",             l:"Bogotá (COT)"},
+    {v:"America/Lima",               l:"Lima (PET)"},
+    {v:"America/Caracas",            l:"Caracas (VET)"},
+  ]},
+  { es:"── África ──",        en:"── Africa ──",          zones:[
+    {v:"Africa/Cairo",               l:"Cairo (EET)"},
+    {v:"Africa/Johannesburg",        l:"Johannesburg (SAST)"},
+    {v:"Africa/Lagos",               l:"Lagos (WAT)"},
+    {v:"Africa/Nairobi",             l:"Nairobi (EAT)"},
+    {v:"Africa/Casablanca",          l:"Casablanca (WET)"},
+  ]},
+  { es:"── Oriente Medio ──", en:"── Middle East ──",    zones:[
+    {v:"Asia/Dubai",                 l:"Dubai (GST)"},
+    {v:"Asia/Riyadh",                l:"Riyadh (AST)"},
+    {v:"Asia/Tehran",                l:"Tehran (IRST)"},
+    {v:"Asia/Jerusalem",             l:"Jerusalem (IST)"},
+  ]},
+  { es:"── Asia ──",          en:"── Asia ──",            zones:[
+    {v:"Asia/Kolkata",               l:"Kolkata (IST)"},
+    {v:"Asia/Dhaka",                 l:"Dhaka (BST)"},
+    {v:"Asia/Bangkok",               l:"Bangkok (ICT)"},
+    {v:"Asia/Singapore",             l:"Singapore (SGT)"},
+    {v:"Asia/Shanghai",              l:"Shanghai (CST)"},
+    {v:"Asia/Hong_Kong",             l:"Hong Kong (HKT)"},
+    {v:"Asia/Tokyo",                 l:"Tokyo (JST)"},
+    {v:"Asia/Seoul",                 l:"Seoul (KST)"},
+    {v:"Asia/Vladivostok",           l:"Vladivostok (VLAT)"},
+  ]},
+  { es:"── Pacífico ──",      en:"── Pacific ──",         zones:[
+    {v:"Australia/Sydney",           l:"Sydney (AEST)"},
+    {v:"Australia/Perth",            l:"Perth (AWST)"},
+    {v:"Pacific/Auckland",           l:"Auckland (NZST)"},
+    {v:"Pacific/Fiji",               l:"Fiji (FJT)"},
+    {v:"Pacific/Guam",               l:"Guam (ChST)"},
+  ]},
+  { es:"── Otra ──",          en:"── Other ──",           zones:[
+    {v:"__custom__", l_es:"Escribir manualmente…", l_en:"Type manually…"},
+  ]},
+];
+
+function buildTimezoneSelect(){
+  const sel = document.getElementById("cfg-timezone");
+  const current = sel.value || (_config&&_config.timezone) || "Europe/Madrid";
+  sel.innerHTML = "";
+  TZ_GROUPS.forEach(g => {
+    const og = document.createElement("optgroup");
+    og.label = _lang==="es" ? g.es : g.en;
+    g.zones.forEach(z => {
+      const op = document.createElement("option");
+      op.value = z.v;
+      op.textContent = z.l_es ? (_lang==="es" ? z.l_es : z.l_en) : z.l;
+      og.appendChild(op);
+    });
+    sel.appendChild(og);
+  });
+  // Restaurar valor seleccionado
+  const exists = [...sel.options].some(o => o.value === current && o.value !== "__custom__");
+  sel.value = exists ? current : "__custom__";
+  document.getElementById("tz-custom-row").style.display =
+    sel.value === "__custom__" ? "flex" : "none";
+}
+
+function applyLang(){
+  document.querySelectorAll("[data-i]").forEach(el=>{const v=t(el.dataset.i);if(v!==el.dataset.i)el.textContent=v;});
+  document.getElementById("btn-es").classList.toggle("active",_lang==="es");
+  document.getElementById("btn-en").classList.toggle("active",_lang==="en");
+  document.getElementById("btn-theme").textContent=(_theme==="light"?"🌙":"☀️");
+  buildTimezoneSelect();
+  if(_flags)renderFilters(_flags,true);
+}
+function setLang(l){_lang=l;localStorage.setItem("dx_lang",l);applyLang();}
+function applyTheme(){document.body.classList.toggle("light",_theme==="light");document.getElementById("btn-theme").textContent=(_theme==="light"?"🌙":"☀️");}
+function toggleTheme(){_theme=_theme==="dark"?"light":"dark";localStorage.setItem("dx_theme",_theme);applyTheme();}
+
+// ══ CARGA INICIAL ════════════════════════════════════════════════════════════
+async function loadInitialData(){
+  try{
+    const[rc,rf]=await Promise.all([fetch("/api/config"),fetch("/api/flags")]);
+    _config=await rc.json(); _flags=await rf.json();
+    fillConfig(); renderFilters(_flags,true);
+  }catch(e){console.error("loadInitialData:",e);}
+}
+
+function fillConfig(){
+  if(!_config)return;
+  setVal("cfg-callsign", _config.callsign||"");
+  setVal("cfg-locator",  _config.locator||"");
+  setVal("cfg-xml-dir",  _config.hrd_xml_dir||"");
+  setVal("cfg-cl-host",  _config.cluster_host||"");
+  setVal("cfg-cl-port",  _config.cluster_port||"");
+  setVal("cfg-cl-login", _config.cluster_login||"");
+  setVal("cfg-cl-pass",  _config.cluster_password||"");
+  setVal("cfg-tg-token", _config.telegram_token||"");
+  setVal("cfg-tg-chatid",_config.telegram_chat_id||"");
+  const sl=document.getElementById("cfg-alert-lang"); if(sl)sl.value=_config.alert_lang||"es";
+  const st=document.getElementById("cfg-time-mode");  if(st)st.value=_config.time_mode||"local";
+  if(_config.timezone&&_config.timezone!=="__custom__")
+    setVal("cfg-tz-custom", _config.timezone);
+  buildTimezoneSelect();  // aplica timezone y muestra/oculta campo manual
+  document.getElementById("hdr-call").textContent=(_config.callsign||"NOCALL").toUpperCase();
+  updateLocHint();
+}
+
+function setVal(id,val){
+  const el=document.getElementById(id);
+  if(el&&document.activeElement!==el)el.value=val;
+}
+
+function updateLocHint(){
+  if(!_config)return;
+  const h=document.getElementById("locator-hint");
+  h.textContent=(_config.locator&&_config.qth_lat&&_config.qth_lon)
+    ?`${t("loc_hint")} ${_config.qth_lat}° N, ${_config.qth_lon}° E`:"";
+}
+
+document.getElementById("cfg-timezone").addEventListener("change",function(){
+  const customRow=document.getElementById("tz-custom-row");
+  if(this.value==="__custom__"){ customRow.style.display="flex"; }
+  else{ customRow.style.display="none"; saveCfg("timezone",this.value,this); }
+});
+function saveTzCustom(value,el){
+  if(!value.trim())return;
+  saveCfg("timezone",value.trim(),el);
+}
+
+// ══ POLLING STATUS ════════════════════════════════════════════════════════════
+async function fetchStatus(){
+  try{
+    const r=await fetch("/api/status"); const d=await r.json();
+    updateStats(d); renderLog(d.log_tail||[]);
+    document.getElementById("refresh-tag").textContent=new Date().toLocaleTimeString(_lang==="es"?"es-ES":"en-GB");
+  }catch(e){console.error(e);}
+}
+
+function st(id,v){const el=document.getElementById(id);if(el)el.textContent=v;}
+
+function formatAge(sec){
+  if(sec==null||sec>=9999)return"—";
+  if(_lang==="es"){
+    if(sec<120)  return"hace "+sec+"s";
+    if(sec<3600) return"hace "+Math.floor(sec/60)+"m";
+    return"hace "+Math.floor(sec/3600)+"h "+Math.floor((sec%3600)/60)+"m";
+  }else{
+    if(sec<120)  return sec+"s ago";
+    if(sec<3600) return Math.floor(sec/60)+"m ago";
+    return Math.floor(sec/3600)+"h "+Math.floor((sec%3600)/60)+"m ago";
+  }
+}
+
+function updateStats(d){
+  const alive=d.monitor_alive;
+  document.getElementById("badge-monitor").className="badge-monitor "+(alive?"alive":"dead");
+  document.getElementById("dot-monitor").className="dot "+(alive?"pulse":"");
+  document.getElementById("badge-txt").textContent=alive?t("monitor_active"):t("monitor_offline");
+  st("s-qsos",   d.qsos_total??"—");
+  st("s-worked", d.dxcc_trabajados??"—");
+  st("s-conf",   d.dxcc_confirmados??"—");
+  st("s-pfx",    d.pfx_tabla!=null?d.pfx_tabla.toLocaleString()+" pfx":"—");
+  st("i-xml",    d.xml_hrd_path||"—");
+  st("i-cty",    d.cty_dat_mtime||"—");
+  st("i-pfxcty", d.pfx_cty!=null?d.pfx_cty.toLocaleString()+" pfx":"—");
+  st("c-host",   d.cluster_host||"—");
+  const conn=d.cluster_connected;
+  const cel=document.getElementById("c-conn");
+  cel.textContent=conn?t("connected"):t("disconnected");
+  cel.className="cluster-val "+(conn?"ok":"err");
+  document.getElementById("btn-connect").style.display=conn?"none":"flex";
+  document.getElementById("btn-disconnect").style.display=conn?"flex":"none";
+  st("c-last", d.cluster_last_spot||"—");
+  const errs=d.errores??0;
+  const eel=document.getElementById("c-err");
+  eel.textContent=errs; eel.className="cluster-val "+(errs>0?"warn":"ok");
+  st("c-upd", formatAge(d.status_age_sec));
+}
+
+// ══ GUARDAR CONFIG ════════════════════════════════════════════════════════════
+async function saveCfg(field,value,el){
+  try{
+    const r=await fetch("/api/config",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({[field]:value})});
+    const d=await r.json();
+    if(d.ok){
+      if(_config&&d.config)Object.assign(_config,d.config);
+      else if(_config)_config[field]=value;
+      if(el&&el.classList){el.classList.add("saved");setTimeout(()=>el.classList.remove("saved"),1500);}
+      if(field==="callsign")document.getElementById("hdr-call").textContent=(value||"NOCALL").toUpperCase();
+      if(field==="locator")updateLocHint();
+    }else{
+      if(el&&el.classList){el.classList.add("error");setTimeout(()=>el.classList.remove("error"),2000);}
+    }
+  }catch(e){
+    if(el&&el.classList){el.classList.add("error");setTimeout(()=>el.classList.remove("error"),2000);}
+  }
+}
+
+// ══ OJO PASSWORD ══════════════════════════════════════════════════════════════
+function toggleEye(id,btn){
+  const el=document.getElementById(id); if(!el)return;
+  const show=el.type==="password"; el.type=show?"text":"password"; btn.textContent=show?"🙈":"👁";
+}
+
+// ══ CLUSTER ════════════════════════════════════════════════════════════════════
+async function clusterCmd(action){
+  const res=document.getElementById("cluster-res");
+  document.getElementById("btn-connect").disabled=true;
+  document.getElementById("btn-disconnect").disabled=true;
+  res.style.display="none";
+  try{
+    const r=await fetch(`/api/cluster/${action}`,{method:"POST"});
+    const d=await r.json();
+    res.className="action-result "+(d.ok?"ok":"err");
+    res.textContent=d.ok?(action==="connect"?t("connect_ok"):t("disconnect_ok")):(d.error||"Error");
+    res.style.display="block"; setTimeout(()=>{res.style.display="none";},4000);
+  }catch(e){res.className="action-result err";res.textContent="✗ "+e.message;res.style.display="block";}
+  document.getElementById("btn-connect").disabled=false;
+  document.getElementById("btn-disconnect").disabled=false;
+}
+
+// ══ EXPLORADOR WINDOWS ════════════════════════════════════════════════════════
+// Los paths con backslash NO pueden ir inline en onclick="..." — se rompe el HTML.
+// Solución: guardar todos los paths en un array y referenciarlos por índice numérico.
+let _dirCurrent = "drives";
+let _dirSelectedPath = "";
+let _dirPaths = [];   // índice → path real (puede contener cualquier carácter)
+
+async function openDirModal(){
+  const saved = document.getElementById("cfg-xml-dir").value.trim();
+  const initPath = saved || "drives";
+  document.getElementById("dir-modal").classList.add("open");
+  document.getElementById("btn-select-dir").disabled = !saved;
+  if(saved) _dirSelectedPath = saved;
+  await loadDir(initPath);
+}
+function closeDirModal(){ document.getElementById("dir-modal").classList.remove("open"); }
+
+// Llamado desde onclick con índice numérico — sin paths en el HTML
+function dirClick(idx){
+  const path = _dirPaths[idx];
+  if(path !== undefined) loadDir(path);
+}
+
+async function loadDir(path){
+  const list = document.getElementById("dir-list");
+  list.innerHTML = `<div class="modal-item empty"><span class="spin"></span></div>`;
+  _dirPaths = [];   // resetear tabla de paths en cada navegación
+  try{
+    const r = await fetch("/api/browse?path=" + encodeURIComponent(path));
+    const d = await r.json();
+    _dirCurrent = d.path || path;
+
+    document.getElementById("dir-path").textContent = d.host_path || d.path || path;
+
+    const isRoot = d.is_drives_root || _dirCurrent === "drives";
+    document.getElementById("btn-select-dir").disabled = isRoot;
+    if(!isRoot) _dirSelectedPath = d.host_path || d.path || path;
+
+    // Construir items usando createElement — sin ningún path inline en el HTML
+    const frag = document.createDocumentFragment();
+
+    if(d.is_drives_root){
+      // Selector de unidades: C:, D:, ...
+      (d.dirs||[]).forEach(drv => {
+        const fullDrive = drv + "\\";
+        const idx = _dirPaths.length;
+        _dirPaths.push(fullDrive);
+        const el = document.createElement("div");
+        el.className = "modal-item drive";
+        el.textContent = "💾 " + drv;
+        el.onclick = () => loadDir(fullDrive);
+        frag.appendChild(el);
+      });
+    } else {
+      // Botón subir (..)
+      if(d.parent != null){
+        const parent = d.parent;
+        const el = document.createElement("div");
+        el.className = "modal-item up";
+        el.textContent = "⬆ ..";
+        el.onclick = () => loadDir(parent);
+        frag.appendChild(el);
+      }
+      // Subdirectorios
+      (d.dirs||[]).forEach(name => {
+        const sep = (_dirCurrent.endsWith("\\") || _dirCurrent.endsWith("/")) ? "" : "\\";
+        const full = _dirCurrent + sep + name;
+        const el = document.createElement("div");
+        el.className = "modal-item dir";
+        el.textContent = "📁 " + name;
+        el.onclick = () => {
+          _dirSelectedPath = full;
+          document.getElementById("btn-select-dir").disabled = false;
+          loadDir(full);
+        };
+        frag.appendChild(el);
+      });
+    }
+
+    list.innerHTML = "";
+    if(!frag.childNodes.length){
+      const empty = document.createElement("div");
+      empty.className = "modal-item empty";
+      empty.textContent = "— " + (_lang==="es"?"vacío":"empty") + " —";
+      list.appendChild(empty);
+    } else {
+      list.appendChild(frag);
+    }
+
+    if(d.error){
+      const warn = document.createElement("div");
+      warn.className = "modal-item empty";
+      warn.style.color = "var(--warn)";
+      warn.textContent = "⚠ " + d.error;
+      list.appendChild(warn);
+    }
+  }catch(e){
+    list.innerHTML = "";
+    const err = document.createElement("div");
+    err.className = "modal-item empty";
+    err.style.color = "var(--red)";
+    err.textContent = "✗ " + e.message;
+    list.appendChild(err);
+  }
+}
+
+async function confirmDir(){
+  if(!_dirSelectedPath) return;
+  const input = document.getElementById("cfg-xml-dir");
+  input.value = _dirSelectedPath;
+  closeDirModal();
+  await saveCfg("hrd_xml_dir", _dirSelectedPath, input);
+}
+
+// ══ ALERTAS ════════════════════════════════════════════════════════════════════
+function renderAlerts(alerts){
+  const tb=document.getElementById("alerts-body");
+  // Actualizar cabecera de hora según time_mode del primer elemento
+  const thTime = document.getElementById("th-time");
+  if(thTime && alerts.length){
+    const tm = alerts[0].time_mode || "local";
+    thTime.textContent = t("th_time") + (tm==="utc" ? " (UTC)" : " (" + t("th_time_local") + ")");
+  } else if(thTime){
+    thTime.textContent = t("th_time");
+  }
+  if(!alerts.length){tb.innerHTML=`<tr><td colspan="7"><div class="empty-msg">${t("no_alerts")}</div></td></tr>`;return;}
+  tb.innerHTML=alerts.map(a=>`
+    <tr>
+      <td>${a.ts||"—"}</td>
+      <td style="color:var(--accent);font-weight:700">${a.call||"—"}</td>
+      <td style="color:var(--text-hi)">${a.dxcc||"—"}</td>
+      <td>${a.freq?a.freq+" MHz":"—"}</td>
+      <td>${a.banda||"—"}</td><td>${a.modo||"—"}</td>
+      <td><span class="tipo-badge ${a.tipo||""}">${a.icono||""} ${t("t_"+(a.tipo||""))||(a.tipo||"—").replace(/_/g," ")}</span></td>
+    </tr>`).join("");
+}
+
+// ══ LOG ════════════════════════════════════════════════════════════════════════
+const LOG_TR=[
+  [/Autenticado\./g,"Authenticated."],[/Escuchando spots en tiempo real/g,"Listening for real-time spots"],
+  [/Conectando a/g,"Connecting to"],[/Reconectando en/g,"Reconnecting in"],
+  [/Solicitados ultimos/g,"Requested last"],[/Desconexion detectada/g,"Disconnection detected"],
+  [/Conexion cerrada por el cluster/g,"Cluster closed connection"],[/Error de conexion/g,"Connection error"],
+  [/Keepalive enviado/g,"Keepalive sent"],[/Recargando log HRD/g,"Reloading HRD log"],
+  [/Log cargado/g,"Log loaded"],[/DXCC confirmados/g,"confirmed DXCC"],[/trabajados\./g,"worked."],
+  [/Sin DXCC/g,"No DXCC"],[/Alerta enviada por Telegram/g,"Alert sent via Telegram"],
+  [/Error Telegram/g,"Telegram error"],[/cty\.dat cargado/g,"cty.dat loaded"],
+  [/prefijos\./g,"prefixes."],[/Tabla prefijo->DXCC construida/g,"Prefix->DXCC table built"],
+  [/Error al parsear XML/g,"XML parse error"],[/No se encontro ningun XML/g,"No XML found"],
+  [/Big CTY actualizado/g,"Big CTY updated"],[/No hay nueva version/g,"No new version"],
+  [/YA_CONFIRMADO/g,"ALREADY_CONFIRMED"],[/Indicativo/g,"Callsign"],
+  [/modo_nuevo/g,"new_mode"],[/modo_sin_qsl/g,"mode_no_qsl"],
+  [/pais_nuevo/g,"new_country"],[/pais_trabajado/g,"worked_country"],
+  [/banda_nueva/g,"new_band"],[/banda_sin_qsl/g,"band_no_qsl"],
+  [/ALERTA/g,"ALERT"],[/Recargando/g,"Reloading"],
+];
+function trLog(l){if(_lang==="es")return l;let o=l;for(const[re,r] of LOG_TR)o=o.replace(re,r);return o;}
+
+function renderLog(lines){
+  const box=document.getElementById("log-box");
+  if(!lines.length){box.innerHTML=`<div class="log-line">—</div>`;return;}
+  box.innerHTML=lines.map(l=>{
+    let cls="INFO";
+    if(l.includes("[WARNING]"))cls="WARNING";
+    else if(l.includes("[ERROR]"))cls="ERROR";
+    else if(l.includes("[DEBUG]"))cls="DEBUG";
+    return`<div class="log-line ${cls}">${esc(trLog(l))}</div>`;
+  }).join("");
+  box.scrollTop=box.scrollHeight;
+}
+function esc(s){return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");}
+
+// ══ FILTROS ════════════════════════════════════════════════════════════════════
+let _lastFS="";
+function renderFilters(flags,force){
+  const fs=JSON.stringify(flags);
+  const wrap=document.getElementById("filters-wrap");
+  if(!force&&wrap.contains(document.activeElement))return;
+  if(!force&&fs===_lastFS)return;
+  _lastFS=fs;
+  const ba=flags.bandas_activas||ALL_BANDS;
+  const ma=flags.modos_activos||ALL_MODES;
+  const ir=parseInt(flags.iaru_region||1);
+  wrap.innerHTML=`
+    <div class="fsec">
+      <div class="fsec-head"><span>🌐 ${t("f_iaru")}</span></div>
+      <div class="fsec-body">
+        ${[1,2,3].map(r=>`<span class="pill zona-r${r} ${ir===r?"on":""}" onclick="setZona(${r})">R${r} — ${t("f_r"+r).split("—")[1].trim()}</span>`).join("")}
+      </div>
+    </div>
+    <div class="fsec">
+      <div class="fsec-head"><span>📻 ${t("f_bandas")}</span>
+        <span style="display:flex;gap:4px">
+          <button class="fsec-btn" onclick="allBandas(true)">${t("f_all")}</button>
+          <button class="fsec-btn" onclick="allBandas(false)">${t("f_none")}</button>
+        </span>
+      </div>
+      <div class="fsec-body">${ALL_BANDS.map(b=>`<span class="pill ${ba.includes(b)?"on":""}" onclick="togBanda('${b}')">${b}</span>`).join("")}</div>
+    </div>
+    <div class="fsec">
+      <div class="fsec-head"><span>🔊 ${t("f_modos")}</span>
+        <span style="display:flex;gap:4px">
+          <button class="fsec-btn" onclick="allModos(true)">${t("f_all")}</button>
+          <button class="fsec-btn" onclick="allModos(false)">${t("f_none")}</button>
+        </span>
+      </div>
+      <div class="fsec-body">${ALL_MODES.map(m=>`<span class="pill modo-${m} ${ma.includes(m)?"on":""}" onclick="togModo('${m}')">${m}</span>`).join("")}</div>
+    </div>
+    <div class="fsec">
+      <div class="fsec-head"><span>🚨 ${t("f_tipos")}</span></div>
+      <div class="fsec-body"><div class="alert-types-grid">
+        ${FLAG_TYPES.map(k=>`
+          <div class="atype-row">
+            <div class="atype-label">${t("f_"+k)}<small>${t("f_"+k+"_d")}</small></div>
+            <label class="toggle"><input type="checkbox" ${flags[k]?"checked":""} onchange="togFlag('${k}',this.checked)"><span class="toggle-slider"></span></label>
+          </div>`).join("")}
+      </div></div>
+    </div>`;
+}
+function setZona(r){_flags.iaru_region=r;renderFilters(_flags,true);saveFlags();}
+function togBanda(b){
+  let ba=_flags.bandas_activas?[..._flags.bandas_activas]:[...ALL_BANDS];
+  ba=ba.includes(b)?ba.filter(x=>x!==b):[...ba,b];
+  _flags.bandas_activas=ALL_BANDS.filter(x=>ba.includes(x));
+  renderFilters(_flags,true);saveFlags();
+}
+function allBandas(a){_flags.bandas_activas=a?[...ALL_BANDS]:[];renderFilters(_flags,true);saveFlags();}
+function togModo(m){
+  let ma=_flags.modos_activos?[..._flags.modos_activos]:[...ALL_MODES];
+  ma=ma.includes(m)?ma.filter(x=>x!==m):[...ma,m];
+  _flags.modos_activos=ALL_MODES.filter(x=>ma.includes(x));
+  renderFilters(_flags,true);saveFlags();
+}
+function allModos(a){_flags.modos_activos=a?[...ALL_MODES]:[];renderFilters(_flags,true);saveFlags();}
+function togFlag(k,v){_flags[k]=v;saveFlags();}
+function saveFlags(){
+  clearTimeout(_flagTimer);
+  _flagTimer=setTimeout(async()=>{
+    await fetch("/api/flags",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(_flags)});
+  },300);
+}
+
+// ══ TELEGRAM TEST ══════════════════════════════════════════════════════════════
+async function testTelegram(){
+  const btn=document.getElementById("btn-test");const res=document.getElementById("tg-res");
+  btn.disabled=true;btn.innerHTML=`<span class="spin"></span> ${t("sending")}`;res.style.display="none";
+  try{
+    const r=await fetch("/api/telegram/test",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({lang:_lang})});
+    const d=await r.json();
+    if(d.ok){res.className="action-result ok";res.textContent=`✓ ${t("test_ok")} (id:${d.message_id})`;}
+    else{res.className="action-result err";res.textContent=`✗ ${t("test_err")}: ${d.error||"?"}`;}
+  }catch(e){res.className="action-result err";res.textContent="✗ "+e.message;}
+  res.style.display="block";btn.disabled=false;
+  btn.innerHTML=`📨 <span data-i="tg_send_test">${t("tg_send_test")}</span>`;
+  setTimeout(()=>{res.style.display="none";},8000);
+}
+
+// ══ SSE — alertas en tiempo real ══════════════════════════════════════════════
+function initAlertStream(){
+  const es = new EventSource("/api/alerts/stream");
+  es.onmessage = function(e){
+    try{ renderAlerts(JSON.parse(e.data)); }
+    catch(err){ console.error("SSE parse error:",err); }
+  };
+  es.onerror = function(){
+    es.close();
+    setTimeout(initAlertStream, 5000);
+  };
+}
+
+// ══ INIT ══════════════════════════════════════════════════════════════════════
+applyTheme();
+applyLang();
+loadInitialData();
+fetchStatus();
+setInterval(fetchStatus,10000);
+initAlertStream();
+</script>
+</body>
+</html>

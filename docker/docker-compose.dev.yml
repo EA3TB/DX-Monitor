@@ -1,0 +1,23 @@
+services:
+
+  dxmonitor:
+    build:
+      context: ./app
+      dockerfile: Dockerfile
+    container_name: dx_monitor_docker
+    restart: unless-stopped
+    ports:
+      - "8765:8765"
+    volumes:
+      - /:/hostfs:ro
+      - dx_docker_data:/opt/dx_monitor_docker
+    networks:
+      - dx_net
+
+volumes:
+  dx_docker_data:
+    driver: local
+
+networks:
+  dx_net:
+    driver: bridge
