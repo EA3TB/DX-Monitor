@@ -1,18 +1,21 @@
 #!/usr/bin/env python3
-"""DX Monitor Docker — v1.0 — proceso único (monitor + web)"""
+"""DX Monitor Docker — v13 — proceso único (monitor + web)"""
 
 import xml.etree.ElementTree as ET
 import socket, time, logging, glob, os, re, datetime, zoneinfo, json, threading, math, queue
 from collections import defaultdict
 import requests
 from flask import Flask, jsonify, render_template, request, Response, stream_with_context
+from log_readers import (
+    leer_hrd_xml, leer_swisslog_mdb, leer_log4om_sqlite, leer_adif
+)
 from band_plans import (
     ALL_BANDS, ALL_MODES,
     freq_khz_to_band, is_cw_segment, infer_mode_by_freq,
     FT8_FREQS, FT4_FREQS
 )
 
-VERSION     = "v1.0"
+VERSION     = "v13"
 CONFIG_PATH = "/opt/dx_monitor_docker/config.json"
 FLAGS_PATH  = "/opt/dx_monitor_docker/flags.json"
 STATUS_PATH = "/opt/dx_monitor_docker/status.json"
@@ -21,11 +24,14 @@ CTY_PATH    = "/opt/dx_monitor_docker/cty.dat"
 
 CONFIG_DEFAULTS = {
     "callsign":"","locator":"","qth_lat":0.0,"qth_lon":0.0,
+    "log_type":"hrd_xml",        # hrd_xml | swisslog_mdb | log4om_sqlite | adif
+    "log_path":"",               # path al fichero de log (MDB/SQLite/ADIF)
     "hrd_xml_dir":"","hrd_xml_glob":"*.xml",
     "cluster_host":"","cluster_port":7300,
     "cluster_login":"","cluster_password":"",
     "telegram_token":"","telegram_chat_id":"",
     "timezone":"Europe/Madrid","alert_lang":"es","time_mode":"local",
+    "log_refresh_minutes":1,
 }
 
 FLAGS_DEFAULT = {
@@ -33,106 +39,6 @@ FLAGS_DEFAULT = {
     "modo_nuevo":True,"modo_sin_qsl":False,
     "bandas_activas":ALL_BANDS[:],"modos_activos":ALL_MODES[:],"iaru_region":1,
 }
-
-# ── Traducciones de log ───────────────────────────────────────────────────────
-_LOG_STRINGS = {
-    "cfg_created":        {"es": "config.json creado con valores por defecto.",
-                           "en": "config.json created with default values."},
-    "cfg_migrated":       {"es": "config.json migrado.",
-                           "en": "config.json migrated."},
-    "cfg_read_error":     {"es": "Error leyendo config.json: %s",
-                           "en": "Error reading config.json: %s"},
-    "cfg_migrate_error":  {"es": "Error migrando config.json: %s",
-                           "en": "Error migrating config.json: %s"},
-    "flags_created":      {"es": "flags.json creado.",
-                           "en": "flags.json created."},
-    "flags_migrated":     {"es": "flags.json migrado.",
-                           "en": "flags.json migrated."},
-    "status_write_error": {"es": "Error escribiendo status.json: %s",
-                           "en": "Error writing status.json: %s"},
-    "cty_no_new":         {"es": "Big CTY actualizado. No hay nueva version.",
-                           "en": "Big CTY up to date. No new version."},
-    "cty_downloading":    {"es": "Descargando nueva version de Big CTY...",
-                           "en": "Downloading new Big CTY version..."},
-    "cty_bad":            {"es": "Big CTY incorrecto (%d lineas).",
-                           "en": "Big CTY invalid (%d lines)."},
-    "cty_updated":        {"es": "Big CTY actualizado: %d lineas.",
-                           "en": "Big CTY updated: %d lines."},
-    "cty_update_error":   {"es": "Error al actualizar Big CTY: %s",
-                           "en": "Error updating Big CTY: %s"},
-    "cty_not_found":      {"es": "No se encontro cty.dat en %s",
-                           "en": "cty.dat not found at %s"},
-    "cty_loaded":         {"es": "cty.dat cargado: %d prefijos.",
-                           "en": "cty.dat loaded: %d prefixes."},
-    "xml_error":          {"es": "Error XML: %s",
-                           "en": "XML error: %s"},
-    "pfx_built":          {"es": "Tabla prefijo->DXCC construida: %d prefijos.",
-                           "en": "Prefix->DXCC table built: %d prefixes."},
-    "xml_not_found":      {"es": "No se encontro ningun XML en %s",
-                           "en": "No XML found in %s"},
-    "xml_parse_error":    {"es": "Error al parsear XML: %s",
-                           "en": "XML parse error: %s"},
-    "xml_records":        {"es": "XML: %s — %d registros",
-                           "en": "XML: %s — %d records"},
-    "log_loaded":         {"es": "Log cargado: %d DXCC confirmados, %d trabajados. Sin DXCC: %d",
-                           "en": "Log loaded: %d DXCC confirmed, %d worked. No DXCC: %d"},
-    "spot_no_dxcc":       {"es": "SPOT sin DXCC: %s %.3f %s/%s",
-                           "en": "SPOT no DXCC: %s %.3f %s/%s"},
-    "spot_info":          {"es": "SPOT %s [%d] %s %s/%s -> %s",
-                           "en": "SPOT %s [%d] %s %s/%s -> %s"},
-    "alert_sent_log":     {"es": "ALERTA %s: %s [%d] %s %s/%s",
-                           "en": "ALERT %s: %s [%d] %s %s/%s"},
-    "tg_not_configured":  {"es": "Telegram no configurado.",
-                           "en": "Telegram not configured."},
-    "tg_sent":            {"es": "Alerta enviada por Telegram.",
-                           "en": "Alert sent via Telegram."},
-    "tg_error":           {"es": "Error Telegram: %s",
-                           "en": "Telegram error: %s"},
-    "log_reloading":      {"es": "Recargando log HRD...",
-                           "en": "Reloading HRD log..."},
-    "cluster_not_cfg":    {"es": "Cluster no configurado. Configure desde el dashboard.",
-                           "en": "Cluster not configured. Configure from the dashboard."},
-    "cluster_connecting": {"es": "Conectando a %s:%d...",
-                           "en": "Connecting to %s:%d..."},
-    "cluster_auth":       {"es": "Autenticado. Escuchando spots en tiempo real...",
-                           "en": "Authenticated. Listening for real-time spots..."},
-    "cluster_hist":       {"es": "Solicitados ultimos 20 spots.",
-                           "en": "Requested last 20 spots."},
-    "cluster_hist_done":  {"es": "Spots historicos registrados. Escuchando stream en tiempo real...",
-                           "en": "Historical spots registered. Listening to real-time stream..."},
-    "cluster_keepalive":  {"es": "Keepalive enviado.",
-                           "en": "Keepalive sent."},
-    "cluster_closed":     {"es": "Conexion cerrada por el cluster.",
-                           "en": "Connection closed by cluster."},
-    "cluster_disconn":    {"es": "Desconexion detectada.",
-                           "en": "Disconnection detected."},
-    "cluster_conn_error": {"es": "Error de conexion: %s",
-                           "en": "Connection error: %s"},
-    "cluster_waiting":    {"es": "Cluster desconectado. Esperando comando connect...",
-                           "en": "Cluster disconnected. Waiting for connect command..."},
-    "cluster_reconnect":  {"es": "Reconectando en 30s...",
-                           "en": "Reconnecting in 30s..."},
-    "cluster_req_connect":{"es": "Conexion solicitada desde dashboard.",
-                           "en": "Connection requested from dashboard."},
-    "cluster_req_disconn":{"es": "Desconexion solicitada desde dashboard.",
-                           "en": "Disconnection requested from dashboard."},
-    "startup_call":       {"es": "Indicativo: %s  Locator: %s",
-                           "en": "Callsign: %s  Locator: %s"},
-    "cluster_not_cfg2":   {"es": "Cluster no configurado. Configure desde el dashboard y pulse Conectar.",
-                           "en": "Cluster not configured. Configure from dashboard and press Connect."},
-    "dashboard_url":      {"es": "Dashboard en http://0.0.0.0:8765",
-                           "en": "Dashboard at http://0.0.0.0:8765"},
-}
-
-def _t(key):
-    """Devuelve el string de log en el idioma configurado en config.json."""
-    try:
-        with open(CONFIG_PATH, "r", encoding="utf-8") as f:
-            lang = json.load(f).get("alert_lang", "es")
-    except Exception:
-        lang = "es"
-    entry = _LOG_STRINGS.get(key, {})
-    return entry.get(lang, entry.get("es", key))
 
 # ── Logging ───────────────────────────────────────────────────────────────────
 import logging.handlers
@@ -142,7 +48,7 @@ class LocalTimezoneFormatter(logging.Formatter):
     def formatTime(self, record, datefmt=None):
         try:
             import json, zoneinfo
-            with open(CONFIG_PATH,"r",encoding="utf-8") as f: cfg = json.load(f)
+            with open(CONFIG_PATH,"r") as f: cfg = json.load(f)
             tz = zoneinfo.ZoneInfo(cfg.get("timezone","UTC"))
         except:
             tz = datetime.timezone.utc
@@ -183,10 +89,11 @@ _status = {
     "qsos_total":0,"pfx_cty":0,"pfx_tabla":0,"last_alerts":[],
     "log_tail":[],"cty_dat_mtime":"","xml_hrd_path":"",
     "errores":0,"all_bands":ALL_BANDS,"all_modes":ALL_MODES,
-    "callsign":"","locator":"",
+    "callsign":"","locator":"","log_source":"hrd_xml",
 }
 _status_lock = threading.Lock()
 _cluster_paused = threading.Event()
+_log_load_lock  = threading.Lock()  # evita cargas simultáneas del log
 
 # ── SSE ───────────────────────────────────────────────────────────────────────
 _sse_clients = []
@@ -209,6 +116,7 @@ def host_path(path):
     return HOSTFS + path
 
 def banda_permite_ssb(freq_khz, region=1):
+    """True si algún segmento de la frecuencia permite SSB o ALL."""
     from band_plans import BAND_PLANS, BAND_ORDER
     plan = BAND_PLANS.get(region, BAND_PLANS[1])
     for banda in BAND_ORDER:
@@ -241,16 +149,16 @@ def maidenhead_to_latlon(grid):
 # ── Config / Flags ────────────────────────────────────────────────────────────
 def _write_json(path, data):
     tmp = path + ".tmp"
-    with open(tmp,"w",encoding="utf-8") as f: json.dump(data, f, indent=2)
+    with open(tmp,"w") as f: json.dump(data, f, indent=2)
     os.replace(tmp, path)
 
 def leer_config():
     cfg = dict(CONFIG_DEFAULTS)
     try:
-        with open(CONFIG_PATH,"r",encoding="utf-8") as f: datos = json.load(f)
+        with open(CONFIG_PATH,"r") as f: datos = json.load(f)
         cfg.update(datos)
     except FileNotFoundError: pass
-    except Exception as e: log.warning(_t("cfg_read_error"), e)
+    except Exception as e: log.warning("Error leyendo config.json: %s", e)
     if cfg.get("locator") and cfg["qth_lat"] == 0.0 and cfg["qth_lon"] == 0.0:
         lat, lon = maidenhead_to_latlon(cfg["locator"])
         if lat: cfg["qth_lat"] = lat; cfg["qth_lon"] = lon
@@ -259,47 +167,48 @@ def leer_config():
 def inicializar_config():
     if not os.path.exists(CONFIG_PATH):
         _write_json(CONFIG_PATH, CONFIG_DEFAULTS)
-        log.info(_t("cfg_created"))
+        log.info("config.json creado con valores por defecto.")
     else:
         try:
-            with open(CONFIG_PATH,"r",encoding="utf-8") as f: datos = json.load(f)
+            with open(CONFIG_PATH,"r") as f: datos = json.load(f)
             updated = False
             for k, v in CONFIG_DEFAULTS.items():
                 if k not in datos: datos[k] = v; updated = True
             if updated:
                 _write_json(CONFIG_PATH, datos)
-                log.info(_t("cfg_migrated"))
-        except Exception as e: log.warning(_t("cfg_migrate_error"), e)
+                log.info("config.json migrado.")
+        except Exception as e: log.warning("Error migrando config.json: %s", e)
 
 def leer_flags():
     try:
-        with open(FLAGS_PATH,"r",encoding="utf-8") as f: datos = json.load(f)
+        with open(FLAGS_PATH,"r") as f: datos = json.load(f)
         flags = dict(FLAGS_DEFAULT); flags.update(datos); return flags
     except: return dict(FLAGS_DEFAULT)
 
 def inicializar_flags():
     if not os.path.exists(FLAGS_PATH):
         _write_json(FLAGS_PATH, FLAGS_DEFAULT)
-        log.info(_t("flags_created"))
+        log.info("flags.json creado.")
     else:
         try:
-            with open(FLAGS_PATH,"r",encoding="utf-8") as f: datos = json.load(f)
+            with open(FLAGS_PATH,"r") as f: datos = json.load(f)
             updated = False
             for k, v in FLAGS_DEFAULT.items():
                 if k not in datos: datos[k] = v; updated = True
             if updated:
                 _write_json(FLAGS_PATH, datos)
-                log.info(_t("flags_migrated"))
+                log.info("flags.json migrado.")
         except: pass
 
 def _escribir_status():
     tmp = STATUS_PATH + ".tmp"
     try:
         with _status_lock: data = dict(_status)
-        with open(tmp,"w",encoding="utf-8") as f: json.dump(data, f, ensure_ascii=False, default=str)
+        with open(tmp,"w") as f: json.dump(data, f, ensure_ascii=False, default=str)
         os.replace(tmp, STATUS_PATH)
+        # Notificar a clientes SSE si hay nuevas alertas
         sse_push(json.dumps(data.get("last_alerts",[]), ensure_ascii=False))
-    except Exception as e: log.warning(_t("status_write_error"), e)
+    except Exception as e: log.warning("Error escribiendo status.json: %s", e)
 
 def _leer_log_tail(n=40):
     try:
@@ -328,30 +237,28 @@ def actualizar_bigcty(path):
             remote_date = resp.headers.get("Last-Modified","")
         if os.path.exists(path) and remote_date:
             if email.utils.parsedate_to_datetime(remote_date).timestamp() <= os.path.getmtime(path):
-                log.info(_t("cty_no_new")); return False
-        log.info(_t("cty_downloading"))
+                log.info("Big CTY actualizado. No hay nueva version."); return False
+        log.info("Descargando nueva version de Big CTY...")
         tmp = path+".tmp"; urllib.request.urlretrieve(url, tmp)
-        with open(tmp,'r',encoding="utf-8",errors='ignore') as f: lineas = f.readlines()
+        with open(tmp,'r',errors='ignore') as f: lineas = f.readlines()
         if len(lineas) < 1000:
-            log.error(_t("cty_bad"), len(lineas)); os.remove(tmp); return False
-        os.replace(tmp, path); log.info(_t("cty_updated"), len(lineas)); return True
-    except Exception as e: log.warning(_t("cty_update_error"), e); return False
+            log.error("Big CTY incorrecto (%d lineas).", len(lineas)); os.remove(tmp); return False
+        os.replace(tmp, path); log.info("Big CTY actualizado: %d lineas.", len(lineas)); return True
+    except Exception as e: log.warning("Error al actualizar Big CTY: %s", e); return False
 
 def hilo_actualizar_cty():
     while True:
         time.sleep(86400)
         if actualizar_bigcty(CTY_PATH):
-            global _pfx_cty, _pfx_a_dxcc
+            global _pfx_cty
             _pfx_cty = cargar_cty_dat(CTY_PATH)
-            cfg = leer_config()
-            ficheros = glob.glob(os.path.join(host_path(cfg["hrd_xml_dir"]), cfg["hrd_xml_glob"]))
-            if ficheros: _pfx_a_dxcc = construir_pfx_a_dxcc(max(ficheros, key=os.path.getmtime))
+            cargar_log()
 
 def cargar_cty_dat(path):
     pfx_cty = {}
     try:
         with open(path,"r",encoding="utf-8",errors="ignore") as f: contenido = f.read()
-    except FileNotFoundError: log.error(_t("cty_not_found"), path); return pfx_cty
+    except FileNotFoundError: log.error("No se encontro cty.dat en %s", path); return pfx_cty
     texto = " ".join(contenido.splitlines()); bloques = texto.split(";")
     for bloque in bloques:
         bloque = bloque.strip()
@@ -366,7 +273,7 @@ def cargar_cty_dat(path):
         for pfx in [dxcc_pfx]+lista:
             pfx_limpio = pfx.lstrip("=").strip()
             if pfx_limpio: pfx_cty[pfx_limpio] = (nombre, lat, lon)
-    log.info(_t("cty_loaded"), len(pfx_cty)); return pfx_cty
+    log.info("cty.dat cargado: %d prefijos.", len(pfx_cty)); return pfx_cty
 
 def coords_por_call(call):
     partes = call.upper().split("/"); candidatos = [partes[0]]
@@ -392,7 +299,7 @@ def construir_pfx_a_dxcc(xml_path):
             except: continue
             clave = country.lower()[:12]
             if clave not in nombre_a_dxcc: nombre_a_dxcc[clave] = (dxcc_num, country)
-    except Exception as e: log.error(_t("xml_error"), e); return {}
+    except Exception as e: log.error("Error XML: %s", e); return {}
     pfx_map = {}
     for pfx,(nombre_cty,lat,lon) in _pfx_cty.items():
         clave = nombre_cty.lower()[:12]
@@ -410,7 +317,7 @@ def construir_pfx_a_dxcc(xml_path):
         for n in range(min(4,len(call)),0,-1):
             pfx = call[:n]
             if pfx not in pfx_map: pfx_map[pfx] = (dxcc_num, country)
-    log.info(_t("pfx_built"), len(pfx_map)); return pfx_map
+    log.info("Tabla prefijo->DXCC construida: %d prefijos.", len(pfx_map)); return pfx_map
 
 SUFIJOS_OP = {"P","M","MM","AM","QRP","QRPP","LH","LGT","A","B","C","R","0","1","2","3","4","5","6","7","8","9"}
 def es_sufijo_op(s): return s in SUFIJOS_OP or s.isdigit() or (len(s)<=2 and s.isalpha() and s in SUFIJOS_OP)
@@ -467,41 +374,115 @@ def normalizar_modo(m):
     return m
 
 def cargar_log_hrd():
+    """Compatibilidad: llama a cargar_log()"""
+    cargar_log()
+
+def _limpiar_stats_log():
+    """Limpia estadísticas, _confirmados, _trabajados y _pfx_a_dxcc.
+    Garantiza que no se envíen alertas con datos de un log anterior."""
     global _confirmados, _trabajados, _pfx_a_dxcc
+    from collections import defaultdict
+    with _lock:
+        _confirmados = defaultdict(lambda: defaultdict(set))
+        _trabajados  = defaultdict(lambda: defaultdict(set))
+    _pfx_a_dxcc = {}
+    with _status_lock:
+        _status["dxcc_confirmados"] = 0; _status["dxcc_trabajados"] = 0
+        _status["qsos_total"] = 0;       _status["pfx_tabla"] = 0
+        _status["xml_hrd_path"] = "";    _status["log_source"] = ""
+    _escribir_status()
+
+def cargar_log():
+    """Carga el log del usuario según log_type configurado.
+    Usa _log_load_lock para evitar cargas simultáneas."""
     cfg = leer_config()
-    ficheros = glob.glob(os.path.join(host_path(cfg["hrd_xml_dir"]), cfg["hrd_xml_glob"]))
-    if not ficheros:
-        log.error(_t("xml_not_found"), os.path.join(host_path(cfg["hrd_xml_dir"]), cfg["hrd_xml_glob"])); return
-    path = max(ficheros, key=os.path.getmtime)
-    _pfx_a_dxcc = construir_pfx_a_dxcc(path)
-    try: tree = ET.parse(path); root = tree.getroot()
-    except ET.ParseError as e: log.error(_t("xml_parse_error"), e); return
-    cn = defaultdict(lambda: defaultdict(set)); tn = defaultdict(lambda: defaultdict(set))
-    registros = root.findall("LogbookBackup/Record")
-    log.info(_t("xml_records"), os.path.basename(path), len(registros))
-    sin = 0
-    for rec in registros:
-        a = rec.attrib; dxcc = a.get("COL_DXCC","").strip(); banda = a.get("COL_BAND","").strip().lower()
-        modo = normalizar_modo(a.get("COL_MODE",""))
-        qsl = (a.get("COL_QSL_RCVD","").upper()=="Y" or a.get("COL_LOTW_QSL_RCVD","").upper() in ("Y","V"))
-        if not dxcc or not banda or not modo: sin += 1; continue
-        try: dn = int(dxcc)
-        except: sin += 1; continue
-        tn[dn][banda].add(modo)
-        if qsl: cn[dn][banda].add(modo)
+    if cfg.get("log_type","hrd_xml") != "hrd_xml":
+        _construir_pfx_a_dxcc_desde_cty()
+    if not _log_load_lock.acquire(blocking=False):
+        log.info("Log load already in progress, skipping.")
+        return
+    try:
+        _cargar_log_impl()
+    finally:
+        _log_load_lock.release()
+
+def _cargar_log_impl():
+    global _confirmados, _trabajados, _pfx_a_dxcc
+    cfg      = leer_config()
+    log_type = cfg.get("log_type", "hrd_xml")
+    log_path = cfg.get("log_path", "")
+
+    cn = tn = stats = None
+
+    if log_type == "hrd_xml":
+        xml_dir = cfg.get("hrd_xml_dir","") or log_path
+        if not xml_dir:
+            log.error("XML directory not configured."); _limpiar_stats_log(); return
+        cn, tn, stats, registros, path = leer_hrd_xml(
+            xml_dir, cfg.get("hrd_xml_glob","*.xml"), host_path_fn=host_path)
+        if cn is None: _limpiar_stats_log(); return
+        _pfx_a_dxcc = construir_pfx_a_dxcc(path)
+
+    elif log_type == "swisslog_mdb":
+        mdb_real = host_path(log_path) if log_path else ""
+        if not mdb_real:
+            log.error("Log path not configured."); _limpiar_stats_log(); return
+        _construir_pfx_a_dxcc_desde_cty()
+        cn, tn, stats = leer_swisslog_mdb(mdb_real, pfx_a_dxcc=_pfx_a_dxcc)
+        if cn is None: _limpiar_stats_log(); return
+
+    elif log_type == "log4om_sqlite":
+        db_real = host_path(log_path) if log_path else ""
+        if not db_real:
+            log.error("Log path not configured."); _limpiar_stats_log(); return
+        _construir_pfx_a_dxcc_desde_cty()
+        cn, tn, stats = leer_log4om_sqlite(db_real)
+        if cn is None: _limpiar_stats_log(); return
+
+    elif log_type == "adif":
+        adif_real = host_path(log_path) if log_path else ""
+        if not adif_real:
+            log.error("Log path not configured."); _limpiar_stats_log(); return
+        _construir_pfx_a_dxcc_desde_cty()
+        cn, tn, stats = leer_adif(adif_real)
+        if cn is None: _limpiar_stats_log(); return
+
+    else:
+        log.error("Unknown log type: %s", log_type); _limpiar_stats_log(); return
+
     with _lock: _confirmados = cn; _trabajados = tn
-    log.info(_t("log_loaded"), len(cn), len(tn), sin)
+    log.info("Log loaded: %d DXCC confirmed, %d worked.", len(cn), len(tn))
     cty_mtime = ""
     try: cty_mtime = datetime.datetime.fromtimestamp(os.path.getmtime(CTY_PATH)).strftime("%Y-%m-%d %H:%M:%S")
     except: pass
     with _status_lock:
         _status["dxcc_confirmados"] = len(cn); _status["dxcc_trabajados"] = len(tn)
-        _status["qsos_total"]  = len(registros); _status["pfx_tabla"]  = len(_pfx_a_dxcc)
-        _status["pfx_cty"]     = len(_pfx_cty);  _status["xml_hrd_path"] = os.path.basename(path)
+        _status["qsos_total"]    = stats.get("qsos_total",0)
+        _status["pfx_tabla"]     = len(_pfx_a_dxcc)
+        _status["pfx_cty"]       = len(_pfx_cty)
+        _status["xml_hrd_path"]  = stats.get("xml_hrd_path","")
+        _status["log_source"]    = stats.get("log_source","hrd_xml")
         _status["cty_dat_mtime"] = cty_mtime
         cfg2 = leer_config()
         _status["callsign"] = cfg2.get("callsign",""); _status["locator"] = cfg2.get("locator","")
     _escribir_status()
+
+def _construir_pfx_a_dxcc_desde_cty():
+    """Construye _pfx_a_dxcc desde _pfx_cty para tipos no-HRD.
+    Solo reconstruye si _pfx_a_dxcc está vacío — evita log repetido.
+    Las claves se normalizan a MAYÚSCULAS para coincidir con P_DXCC de Swisslog."""
+    global _pfx_a_dxcc
+    if not _pfx_cty: return
+    if _pfx_a_dxcc:  # ya construido — no reconstruir ni loguear
+        return
+    nombre_a_num = {}; counter = 1; pfx_map = {}
+    for pfx, (nombre, lat, lon) in _pfx_cty.items():
+        if nombre not in nombre_a_num:
+            nombre_a_num[nombre] = counter; counter += 1
+        # Claves en MAYÚSCULAS — Swisslog P_DXCC siempre está en mayúsculas
+        pfx_map[pfx.upper()] = (nombre_a_num[nombre], nombre)
+    _pfx_a_dxcc = pfx_map
+    log.info("Prefix->DXCC table built from cty.dat: %d prefixes.", len(pfx_map))
 
 # ── Cluster ───────────────────────────────────────────────────────────────────
 def extraer_propagacion(c):
@@ -541,7 +522,7 @@ def clasificar_spot(dxcc_num, banda, modo, flags):
         elif flags.get("modo_sin_qsl",False): return "modo_sin_qsl","🔊"
     return None, None
 
-def procesar_linea(linea, solo_registrar=False):
+def procesar_linea(linea):
     global _alertas_enviadas
     mc = RE_CC11.match(linea)
     if mc:
@@ -575,16 +556,19 @@ def procesar_linea(linea, solo_registrar=False):
     modo_explicito = modo in ["CW","SSB","RTTY","FT8","FT4"]
 
     if not modo_explicito:
-        # Rango asimétrico: -1 kHz / +3 kHz sobre la frecuencia base
-        ft4_match = any(-1 <= freq_khz - f <= 3 for f in FT4_FREQS.values())
-        ft8_match = any(-1 <= freq_khz - f <= 3 for f in FT8_FREQS.values())
+        # Comprobar si la frecuencia coincide con una frecuencia estándar FT8/FT4 (±1 kHz)
+        freq_mhz = freq_khz / 1000
+        ft8_match = any(abs(freq_mhz - f/1000) <= 0.001 for f in FT8_FREQS.values())
+        ft4_match = any(abs(freq_mhz - f/1000) <= 0.001 for f in FT4_FREQS.values())
         if ft4_match:
             modo = "FT4"
         elif ft8_match:
             modo = "FT8"
         else:
+            # Para CW/SSB inferir por frecuencia; RTTY solo si está en el comentario
             inferido = infer_mode_by_freq(freq_khz, region) or "SSB"
             if inferido in ["RTTY","FT8","FT4"]:
+                # Si la banda no permite SSB, usar CW como fallback
                 inferido = "SSB" if banda_permite_ssb(freq_khz, region) else "CW"
             modo = inferido
 
@@ -594,24 +578,19 @@ def procesar_linea(linea, solo_registrar=False):
 
     dxcc_num, nombre, dx_lat, dx_lon = call_a_dxcc(call)
     if not dxcc_num:
-        log.info(_t("spot_no_dxcc"), call, freq, banda, modo); return
+        log.info("SPOT sin DXCC: %s %.3f %s/%s", call, freq, banda, modo); return
 
     ahora = time.time()
     with _lock_alertas:
         _alertas_enviadas = {(c,b,mo,t) for c,b,mo,t in _alertas_enviadas if ahora-t < 600}
         if any(c==call and b==banda and mo==modo for c,b,mo,t in _alertas_enviadas): return
 
-    # Spots históricos: registrar en antiduplicado pero no alertar
-    if solo_registrar:
-        with _lock_alertas: _alertas_enviadas.add((call, banda, modo, ahora))
-        return
-
     tipo, icono = clasificar_spot(dxcc_num, banda, modo, flags)
-    log.info(_t("spot_info"), call, dxcc_num, nombre, banda, modo, tipo or "ALREADY_CONFIRMED")
+    log.info("SPOT %s [%d] %s %s/%s -> %s", call, dxcc_num, nombre, banda, modo, tipo or "YA_CONFIRMADO")
     if not tipo: return
 
     with _lock_alertas: _alertas_enviadas.add((call, banda, modo, ahora))
-    log.info(_t("alert_sent_log"), tipo, call, dxcc_num, nombre, banda, modo)
+    log.info("ALERTA %s: %s [%d] %s %s/%s", tipo, call, dxcc_num, nombre, banda, modo)
 
     qth_lat = cfg.get("qth_lat",0.0); qth_lon = cfg.get("qth_lon",0.0)
     if qth_lat == 0.0:
@@ -636,19 +615,11 @@ def procesar_linea(linea, solo_registrar=False):
     if clean:    msg += "\n📝 %s" % clean
     if prop_str: msg += "\n📶 %s: %s" % (tg_label("propagacion",lang), prop_str)
 
-    # Hora para la tabla de últimas alertas — respeta time_mode y timezone
-    if time_mode == "utc":
-        now_str = datetime.datetime.now(datetime.timezone.utc).strftime("%H:%M:%S")
-    else:
-        try:
-            tz_cfg = zoneinfo.ZoneInfo(cfg.get("timezone","Europe/Madrid"))
-            now_str = datetime.datetime.now(tz_cfg).strftime("%H:%M:%S")
-        except Exception:
-            now_str = datetime.datetime.now().strftime("%H:%M:%S")
-
+    now_dt = datetime.datetime.now()
+    now_str = now_dt.strftime("%H:%M:%S")
+    now_date = now_dt.strftime("%d/%m/%Y")
     entry = {"ts":now_str,"call":call,"dxcc":nombre,"freq":"%.3f"%freq,
-             "banda":banda,"modo":modo,"tipo":tipo,"icono":icono,
-             "time_mode":time_mode,"spotter":spotter}
+             "banda":banda,"modo":modo,"tipo":tipo,"icono":icono,"spotter":spotter,"date":now_date}
     with _status_lock:
         _status["cluster_last_spot"] = now_str
         _status["last_alerts"].insert(0, entry)
@@ -675,17 +646,24 @@ def utc_a_local(hora_utc_str, tz="Europe/Madrid"):
 
 def enviar_telegram(msg, cfg):
     token = cfg.get("telegram_token",""); chat_id = cfg.get("telegram_chat_id","")
-    if not token or not chat_id: log.warning(_t("tg_not_configured")); return
+    if not token or not chat_id: log.warning("Telegram no configurado."); return
     try:
         r = requests.post("https://api.telegram.org/bot%s/sendMessage" % token,
                           json={"chat_id":chat_id,"text":msg,"parse_mode":"HTML"}, timeout=10)
-        r.raise_for_status(); log.info(_t("tg_sent"))
-    except requests.RequestException as e: log.error(_t("tg_error"), e)
+        r.raise_for_status(); log.info("Alerta enviada por Telegram.")
+    except requests.RequestException as e: log.error("Error Telegram: %s", e)
 
 # ── Hilos monitor ─────────────────────────────────────────────────────────────
 def hilo_recarga_log():
     while True:
-        time.sleep(60); log.info(_t("log_reloading")); cargar_log_hrd()
+        try:
+            mins = float(leer_config().get("log_refresh_minutes", 1))
+            mins = max(0.5, mins)
+        except Exception:
+            mins = 1
+        time.sleep(mins * 60)
+        log.info("Reloading log...")
+        cargar_log()
 
 def bucle_cluster():
     while True:
@@ -694,10 +672,10 @@ def bucle_cluster():
 
         s = None; cfg = leer_config()
         if not cfg.get("cluster_host") or not cfg.get("cluster_login"):
-            log.info(_t("cluster_not_cfg"))
+            log.info("Cluster no configurado. Configure desde el dashboard.")
             _cluster_paused.set(); continue
         try:
-            log.info(_t("cluster_connecting"), cfg["cluster_host"], cfg["cluster_port"])
+            log.info("Conectando a %s:%d...", cfg["cluster_host"], cfg["cluster_port"])
             s = socket.socket(socket.AF_INET, socket.SOCK_STREAM); s.settimeout(20)
             s.connect((cfg["cluster_host"], int(cfg["cluster_port"])))
             buf = ""
@@ -707,7 +685,7 @@ def bucle_cluster():
             while "password:" not in buf.lower():
                 buf += s.recv(1024).decode("utf-8",errors="ignore")
             s.sendall((cfg["cluster_password"]+"\r\n").encode())
-            log.info(_t("cluster_auth"))
+            log.info("Autenticado. Escuchando spots en tiempo real...")
             with _status_lock:
                 _status["cluster_connected"] = True
                 _status["cluster_host"] = "%s:%d" % (cfg["cluster_host"], cfg["cluster_port"])
@@ -722,25 +700,15 @@ def bucle_cluster():
                     if not lft: break
             except socket.timeout: pass
             s.settimeout(5); s.sendall(b"sh/dx 20\r\n")
-            log.info(_t("cluster_hist"))
-            # Recoger respuesta del sh/dx 20 por separado y registrar sin alertar
-            hist_buf = ""; t_last = time.time()
-            while time.time() - t_last < 3.0:
-                try:
-                    chunk = s.recv(4096).decode("utf-8", errors="ignore")
-                    if chunk: hist_buf += chunk; t_last = time.time()
-                except socket.timeout: pass
-            for linea in hist_buf.splitlines():
-                if linea.strip(): procesar_linea(linea, solo_registrar=True)
-            log.info(_t("cluster_hist_done"))
+            log.info("Solicitados ultimos 20 spots.")
             buf = ""; uka = time.time()
             while True:
                 if time.time()-uka > 180:
-                    s.sendall(b"sh/dx 1\r\n"); uka = time.time(); log.info(_t("cluster_keepalive"))
+                    s.sendall(b"sh/dx 1\r\n"); uka = time.time(); log.info("Keepalive enviado.")
                 try: chunk = s.recv(4096).decode("utf-8",errors="ignore")
                 except socket.timeout: continue
                 if not chunk:
-                    log.warning(_t("cluster_closed"))
+                    log.warning("Conexion cerrada por el cluster.")
                     with _status_lock: _status["cluster_connected"] = False
                     _escribir_status(); break
                 buf += chunk
@@ -748,9 +716,9 @@ def bucle_cluster():
                     linea, buf = buf.split("\n",1); linea = linea.rstrip("\r")
                     if linea.strip(): procesar_linea(linea)
                 if "disconnected" in buf.lower() or "reconnected" in buf.lower():
-                    log.warning(_t("cluster_disconn")); break
+                    log.warning("Desconexion detectada."); break
         except Exception as e:
-            log.warning(_t("cluster_conn_error"), e)
+            log.warning("Error de conexion: %s", e)
             with _status_lock: _status["cluster_connected"] = False; _status["errores"] += 1
             _escribir_status()
         finally:
@@ -759,9 +727,9 @@ def bucle_cluster():
                 except: pass
 
         if _cluster_paused.is_set():
-            log.info(_t("cluster_waiting")); continue
+            log.info("Cluster desconectado. Esperando comando connect..."); continue
 
-        log.info(_t("cluster_reconnect")); time.sleep(30)
+        log.info("Reconectando en 30s..."); time.sleep(30)
 
 # ── Rutas Flask ───────────────────────────────────────────────────────────────
 @app.route("/")
@@ -774,13 +742,17 @@ def api_status():
     try:
         mtime = os.path.getmtime(STATUS_PATH)
         delta = datetime.datetime.now().timestamp() - mtime
+        if delta < 120:    uptime_str = "hace %ds" % int(delta)
+        elif delta < 3600: uptime_str = "hace %dm" % int(delta//60)
+        else:              uptime_str = "hace %dh %dm" % (int(delta//3600), int((delta%3600)//60))
         data["status_age_sec"] = int(delta)
     except:
-        data["status_age_sec"] = 9999
-    data["log_tail"]      = _leer_log_tail()
+        uptime_str = "—"; data["status_age_sec"] = 9999
+    data["status_last_update"] = uptime_str
+    data["log_tail"]     = _leer_log_tail()
     data["monitor_alive"] = data.get("status_age_sec", 9999) < 300
-    data["all_bands"]     = ALL_BANDS
-    data["all_modes"]     = ALL_MODES
+    data["all_bands"]    = ALL_BANDS
+    data["all_modes"]    = ALL_MODES
     return jsonify(data)
 
 @app.route("/api/config", methods=["GET"])
@@ -799,8 +771,18 @@ def api_config_update():
             lat, lon = maidenhead_to_latlon(new_data["locator"])
             if lat is not None:
                 new_data["qth_lat"] = lat; new_data["qth_lon"] = lon
+        # Detectar si cambia log_type o log_path — disparar recarga inmediata
+        reload_log = (
+            ("log_type" in new_data and new_data["log_type"] != current.get("log_type")) or
+            ("log_path" in new_data and new_data["log_path"] != current.get("log_path","") and new_data["log_path"]) or
+            ("hrd_xml_dir" in new_data and new_data["hrd_xml_dir"] != current.get("hrd_xml_dir","") and new_data["hrd_xml_dir"])
+        )
         current.update(new_data)
         _write_json(CONFIG_PATH, current)
+        if reload_log:
+            import threading
+            _limpiar_stats_log()
+            threading.Thread(target=cargar_log, daemon=True).start()
         return jsonify({"ok": True, "config": current})
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)}), 500
@@ -827,13 +809,13 @@ def api_cluster_connect():
     cfg = leer_config()
     if not cfg.get("cluster_host") or not cfg.get("cluster_login"):
         return jsonify({"ok": False, "error": "Host o login no configurados"}), 400
-    log.info(_t("cluster_req_connect"))
+    log.info("Conexion solicitada desde dashboard.")
     _cluster_paused.clear()
     return jsonify({"ok": True})
 
 @app.route("/api/cluster/disconnect", methods=["POST"])
 def api_cluster_disconnect():
-    log.info(_t("cluster_req_disconn"))
+    log.info("Desconexion solicitada desde dashboard.")
     _cluster_paused.set()
     with _status_lock: _status["cluster_connected"] = False
     _escribir_status()
@@ -841,51 +823,62 @@ def api_cluster_disconnect():
 
 @app.route("/api/browse")
 def api_browse():
-    path = request.args.get("path", "/hostfs").strip() or "/hostfs"
-    path = os.path.normpath(path)
+    path   = request.args.get("path", "/hostfs").strip() or "/hostfs"
+    exts_q = request.args.get("exts", "").strip()
+    exts   = [e.strip().lower() for e in exts_q.split(",") if e.strip()] if exts_q else []
+    path   = os.path.normpath(path)
     if not path.startswith("/hostfs"): path = "/hostfs"
     try:
         if not os.path.isdir(path): path = os.path.dirname(path) or "/hostfs"
-        entries  = os.listdir(path)
-        dirs     = sorted([e for e in entries
-                           if os.path.isdir(os.path.join(path, e)) and not e.startswith(".")])
-        parent   = os.path.dirname(path) if path != "/hostfs" else None
+        entries = os.listdir(path)
+        dirs    = sorted([e for e in entries
+                          if os.path.isdir(os.path.join(path, e)) and not e.startswith(".")],
+                         key=lambda x: x.lower())
+        files   = []
+        if exts:
+            files = sorted([e for e in entries
+                            if os.path.isfile(os.path.join(path, e))
+                            and any(e.lower().endswith(x) for x in exts)],
+                           key=lambda x: x.lower())
+        parent = os.path.dirname(path) if path != "/hostfs" else None
         host_path_display = path[len("/hostfs"):] or "/"
         return jsonify({"ok": True, "path": path, "host_path": host_path_display,
-                        "dirs": dirs, "parent": parent})
+                        "dirs": dirs, "files": files, "parent": parent})
     except PermissionError:
         parent = os.path.dirname(path) if path != "/hostfs" else None
         return jsonify({"ok": False, "path": path, "host_path": path[len("/hostfs"):] or "/",
-                        "dirs": [], "parent": parent, "error": "Sin permiso"})
+                        "dirs": [], "files": [], "parent": parent, "error": "Sin permiso"})
     except Exception as e:
         return jsonify({"ok": False, "error": str(e), "path": path,
-                        "host_path": "/", "dirs": [], "parent": None})
+                        "host_path": "/", "dirs": [], "files": [], "parent": None})
 
 @app.route("/api/alerts/stream")
 def api_alerts_stream():
     q = queue.Queue(maxsize=20)
     with _sse_lock: _sse_clients.append(q)
     def generate():
+        # Enviar alertas actuales al conectar
         with _status_lock: current = list(_status.get("last_alerts",[]))
         yield f"data: {json.dumps(current, ensure_ascii=False)}\n\n"
-        try:
-            while True:
-                try:
-                    data = q.get(timeout=25)
-                    yield f"data: {data}\n\n"
-                except queue.Empty:
-                    yield ": keepalive\n\n"
-        except GeneratorExit:
-            pass
-        finally:
-            with _sse_lock:
-                try: _sse_clients.remove(q)
-                except ValueError: pass
+        while True:
+            try:
+                data = q.get(timeout=25)
+                yield f"data: {data}\n\n"
+            except queue.Empty:
+                yield ": keepalive\n\n"
     return Response(
         stream_with_context(generate()),
         mimetype="text/event-stream",
         headers={"Cache-Control":"no-cache","X-Accel-Buffering":"no"}
     )
+
+@app.route("/api/log/reload", methods=["POST"])
+def api_log_reload():
+    """Fuerza recarga inmediata del log — llamado tras cambiar tipo o path."""
+    import threading
+    _limpiar_stats_log()
+    threading.Thread(target=cargar_log, daemon=True).start()
+    return jsonify({"ok": True})
 
 @app.route("/api/telegram/test", methods=["POST"])
 def api_telegram_test():
@@ -914,19 +907,24 @@ def api_telegram_test():
 def main():
     global _pfx_cty
     inicializar_config(); inicializar_flags(); cfg = leer_config()
-    log.info(_t("startup_call"), cfg.get("callsign","?"), cfg.get("locator","?"))
-    actualizar_bigcty(CTY_PATH); _pfx_cty = cargar_cty_dat(CTY_PATH); cargar_log_hrd()
+    log.info("=== DX Monitor Docker %s ===", VERSION)
+    log.info("Indicativo: %s  Locator: %s", cfg.get("callsign","?"), cfg.get("locator","?"))
+    actualizar_bigcty(CTY_PATH); _pfx_cty = cargar_cty_dat(CTY_PATH); cargar_log()
 
+    # Hilos del monitor
     threading.Thread(target=hilo_recarga_log,    daemon=True).start()
     threading.Thread(target=hilo_actualizar_cty, daemon=True).start()
 
+    # Autoconectar si hay config guardada, si no esperar
     if not cfg.get("cluster_host") or not cfg.get("cluster_login"):
-        log.info(_t("cluster_not_cfg2"))
+        log.info("Cluster no configurado. Configure desde el dashboard y pulse Conectar.")
         _cluster_paused.set()
 
+    # Bucle cluster en hilo daemon
     threading.Thread(target=bucle_cluster, daemon=True).start()
 
-    log.info(_t("dashboard_url"))
+    # Flask en el hilo principal
+    log.info("Dashboard en http://0.0.0.0:8765")
     app.run(host="0.0.0.0", port=8765, debug=False, use_reloader=False)
 
 if __name__ == "__main__":

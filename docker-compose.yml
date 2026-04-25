@@ -1,9 +1,9 @@
-services:
+# docker-compose.yml — End user (Docker Hub image)
+# Usage: docker compose up -d
 
+services:
   dxmonitor:
-    build:
-      context: ./app
-      dockerfile: Dockerfile
+    image: ea3tb/dx-monitor:latest
     container_name: dx_monitor_docker
     restart: unless-stopped
     ports:
@@ -11,12 +11,25 @@ services:
     volumes:
       - /:/hostfs:ro
       - dx_docker_data:/opt/dx_monitor_docker
+      # Optional: mount a shared folder from your local PC (SMB/CIFS)
+      # Uncomment and adjust if you want to access MDB/SQLite/ADIF log files from your PC
+      # - pc_logs:/hostfs/mnt/pc_logs:ro
     networks:
       - dx_net
 
 volumes:
   dx_docker_data:
     driver: local
+  # Optional: SMB volume to access log files from a local PC
+  # Uncomment and adjust the IP address, share name and credentials
+  # pc_logs:
+  #   driver: local
+  #   driver_opts:
+  #     type: cifs
+  #     device: "//192.168.X.X/ShareName"
+  #     o: "guest,uid=1000,gid=1000,iocharset=utf8,vers=2.0"
+  #     # If the share requires a username and password, replace guest with:
+  #     # o: "username=USER,password=PASSWORD,uid=1000,gid=1000,iocharset=utf8,vers=2.0"
 
 networks:
   dx_net:

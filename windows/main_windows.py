@@ -9,6 +9,9 @@ import pystray
 from collections import defaultdict
 import requests
 from flask import Flask, jsonify, render_template, request, Response, stream_with_context
+from log_readers import (
+    leer_hrd_xml, leer_swisslog_mdb, leer_log4om_sqlite, leer_adif
+)
 from band_plans import (
     ALL_BANDS, ALL_MODES,
     freq_khz_to_band, is_cw_segment, infer_mode_by_freq,
@@ -34,11 +37,14 @@ CTY_PATH    = os.path.join(DATA_DIR, "cty.dat")
 
 CONFIG_DEFAULTS = {
     "callsign":"","locator":"","qth_lat":0.0,"qth_lon":0.0,
+    "log_type":"hrd_xml",        # hrd_xml | swisslog_mdb | log4om_sqlite | adif
+    "log_path":"",               # path al fichero/directorio de log
     "hrd_xml_dir":"","hrd_xml_glob":"*.xml",
     "cluster_host":"","cluster_port":7300,
     "cluster_login":"","cluster_password":"",
     "telegram_token":"","telegram_chat_id":"",
     "timezone":"Europe/Madrid","alert_lang":"es","time_mode":"local",
+    "log_refresh_minutes":1,
 }
 
 FLAGS_DEFAULT = {
@@ -108,8 +114,12 @@ _LOG_STRINGS = {
     "tg_error":           {"es": "Error Telegram: %s",
                            "en": "Telegram error: %s"},
     # cluster
-    "log_reloading":      {"es": "Recargando log HRD...",
-                           "en": "Reloading HRD log..."},
+    "log_reloading":      {"es": "Recargando log...",
+                           "en": "Reloading log..."},
+    "log_type_unknown":   {"es": "Tipo de log desconocido: %s",
+                           "en": "Unknown log type: %s"},
+    "log_loaded_src":     {"es": "Log cargado desde %s",
+                           "en": "Log loaded from %s"},
     "cluster_not_cfg":    {"es": "Cluster no configurado. Configure desde el dashboard.",
                            "en": "Cluster not configured. Configure from the dashboard."},
     "cluster_connecting": {"es": "Conectando a %s:%d...",
@@ -217,6 +227,7 @@ _alertas_enviadas = set()
 _lock_alertas     = threading.Lock()
 _pfx_a_dxcc = {}
 _pfx_cty    = {}
+_dao_disponible = None   # None=no verificado, True=OK, False=no disponible
 
 _status = {
     "version":VERSION,"cluster_host":"","cluster_connected":False,
@@ -224,10 +235,11 @@ _status = {
     "qsos_total":0,"pfx_cty":0,"pfx_tabla":0,"last_alerts":[],
     "log_tail":[],"cty_dat_mtime":"","xml_hrd_path":"",
     "errores":0,"all_bands":ALL_BANDS,"all_modes":ALL_MODES,
-    "callsign":"","locator":"",
+    "callsign":"","locator":"","log_source":"hrd_xml","platform":"windows","dao_available":None,
 }
 _status_lock    = threading.Lock()
 _cluster_paused = threading.Event()
+_log_load_lock  = threading.Lock()  # evita cargas simultáneas del log
 
 # ── SSE ───────────────────────────────────────────────────────────────────────
 _sse_clients = []
@@ -387,11 +399,9 @@ def hilo_actualizar_cty():
     while True:
         time.sleep(86400)
         if actualizar_bigcty(CTY_PATH):
-            global _pfx_cty, _pfx_a_dxcc
+            global _pfx_cty
             _pfx_cty = cargar_cty_dat(CTY_PATH)
-            cfg = leer_config()
-            ficheros = glob.glob(os.path.join(cfg["hrd_xml_dir"], cfg["hrd_xml_glob"]))
-            if ficheros: _pfx_a_dxcc = construir_pfx_a_dxcc(max(ficheros, key=os.path.getmtime))
+            cargar_log()  # recargar log con cty actualizado
 
 def cargar_cty_dat(path):
     pfx_cty = {}
@@ -513,45 +523,118 @@ def normalizar_modo(m):
     return m
 
 def cargar_log_hrd():
+    """Compatibilidad: llama a cargar_log()"""
+    cargar_log()
+
+def _limpiar_stats_log():
+    """Limpia estadísticas, _confirmados, _trabajados y _pfx_a_dxcc.
+    Garantiza que no se envíen alertas con datos de un log anterior."""
     global _confirmados, _trabajados, _pfx_a_dxcc
+    from collections import defaultdict
+    with _lock:
+        _confirmados = defaultdict(lambda: defaultdict(set))
+        _trabajados  = defaultdict(lambda: defaultdict(set))
+    _pfx_a_dxcc = {}
+    with _status_lock:
+        _status["dxcc_confirmados"] = 0
+        _status["dxcc_trabajados"]  = 0
+        _status["qsos_total"]       = 0
+        _status["pfx_tabla"]        = 0
+        _status["xml_hrd_path"]     = ""
+        _status["log_source"]       = ""
+    _escribir_status()
+
+def cargar_log():
+    """Carga el log del usuario según log_type configurado.
+    Usa _log_load_lock para evitar cargas simultáneas."""
+    # Construir _pfx_a_dxcc ANTES del lock — evita que la primera carga
+    # encuentre el mapa vacío si hay dos hilos compitiendo
     cfg = leer_config()
-    # En Windows: path directo, sin HOSTFS
-    xml_dir = cfg["hrd_xml_dir"]
-    if not xml_dir:
-        log.error(_t("xml_dir_missing")); return
-    ficheros = glob.glob(os.path.join(xml_dir, cfg["hrd_xml_glob"]))
-    if not ficheros:
-        log.error(_t("xml_not_found"), os.path.join(xml_dir, cfg["hrd_xml_glob"])); return
-    path = max(ficheros, key=os.path.getmtime)
-    _pfx_a_dxcc = construir_pfx_a_dxcc(path)
-    try: tree = ET.parse(path); root = tree.getroot()
-    except ET.ParseError as e: log.error(_t("xml_parse_error"), e); return
-    cn = defaultdict(lambda: defaultdict(set)); tn = defaultdict(lambda: defaultdict(set))
-    registros = root.findall("LogbookBackup/Record")
-    log.info(_t("xml_records"), os.path.basename(path), len(registros))
-    sin = 0
-    for rec in registros:
-        a = rec.attrib; dxcc = a.get("COL_DXCC","").strip(); banda = a.get("COL_BAND","").strip().lower()
-        modo = normalizar_modo(a.get("COL_MODE",""))
-        qsl = (a.get("COL_QSL_RCVD","").upper()=="Y" or a.get("COL_LOTW_QSL_RCVD","").upper() in ("Y","V"))
-        if not dxcc or not banda or not modo: sin += 1; continue
-        try: dn = int(dxcc)
-        except: sin += 1; continue
-        tn[dn][banda].add(modo)
-        if qsl: cn[dn][banda].add(modo)
+    if cfg.get("log_type","hrd_xml") != "hrd_xml":
+        _construir_pfx_a_dxcc_desde_cty()
+    if not _log_load_lock.acquire(blocking=False):
+        log.info("Log load already in progress, skipping.")
+        return
+    try:
+        _cargar_log_impl()
+    finally:
+        _log_load_lock.release()
+
+def _cargar_log_impl():
+    global _confirmados, _trabajados, _pfx_a_dxcc
+    cfg      = leer_config()
+    log_type = cfg.get("log_type", "hrd_xml")
+    log_path = cfg.get("log_path", "")
+
+    cn = tn = stats = None
+
+    if log_type == "hrd_xml":
+        xml_dir = cfg.get("hrd_xml_dir","") or log_path
+        if not xml_dir:
+            log.error(_t("xml_dir_missing")); _limpiar_stats_log(); return
+        cn, tn, stats, registros, path = leer_hrd_xml(xml_dir, cfg.get("hrd_xml_glob","*.xml"))
+        if cn is None: _limpiar_stats_log(); return
+        _pfx_a_dxcc = construir_pfx_a_dxcc(path)
+
+    elif log_type == "swisslog_mdb":
+        if not log_path:
+            log.error(_t("xml_dir_missing")); _limpiar_stats_log(); return
+        if _dao_disponible == False:  # False explícito — None significa no verificado aún
+            _limpiar_stats_log(); return
+        _construir_pfx_a_dxcc_desde_cty()
+        cn, tn, stats = leer_swisslog_mdb(log_path, pfx_a_dxcc=_pfx_a_dxcc)
+        if cn is None: _limpiar_stats_log(); return
+
+    elif log_type == "log4om_sqlite":
+        if not log_path:
+            log.error(_t("xml_dir_missing")); _limpiar_stats_log(); return
+        _construir_pfx_a_dxcc_desde_cty()
+        cn, tn, stats = leer_log4om_sqlite(log_path)
+        if cn is None: _limpiar_stats_log(); return
+
+    elif log_type == "adif":
+        if not log_path:
+            log.error(_t("xml_dir_missing")); _limpiar_stats_log(); return
+        _construir_pfx_a_dxcc_desde_cty()
+        cn, tn, stats = leer_adif(log_path)
+        if cn is None: _limpiar_stats_log(); return
+
+    else:
+        log.error(_t("log_type_unknown"), log_type); _limpiar_stats_log(); return
+
     with _lock: _confirmados = cn; _trabajados = tn
-    log.info(_t("log_loaded"), len(cn), len(tn), sin)
+    log.info(_t("log_loaded"), len(cn), len(tn), 0)
     cty_mtime = ""
     try: cty_mtime = datetime.datetime.fromtimestamp(os.path.getmtime(CTY_PATH)).strftime("%Y-%m-%d %H:%M:%S")
     except: pass
     with _status_lock:
         _status["dxcc_confirmados"] = len(cn); _status["dxcc_trabajados"] = len(tn)
-        _status["qsos_total"]  = len(registros); _status["pfx_tabla"]  = len(_pfx_a_dxcc)
-        _status["pfx_cty"]     = len(_pfx_cty);  _status["xml_hrd_path"] = os.path.basename(path)
+        _status["qsos_total"]    = stats.get("qsos_total",0)
+        _status["pfx_tabla"]     = len(_pfx_a_dxcc)
+        _status["pfx_cty"]       = len(_pfx_cty)
+        _status["xml_hrd_path"]  = stats.get("xml_hrd_path","")
+        _status["log_source"]    = stats.get("log_source","hrd_xml")
         _status["cty_dat_mtime"] = cty_mtime
         cfg2 = leer_config()
         _status["callsign"] = cfg2.get("callsign",""); _status["locator"] = cfg2.get("locator","")
     _escribir_status()
+
+def _construir_pfx_a_dxcc_desde_cty():
+    """Construye _pfx_a_dxcc desde _pfx_cty para tipos no-HRD.
+    Solo reconstruye si _pfx_a_dxcc está vacío — evita log repetido.
+    Las claves se normalizan a MAYÚSCULAS para coincidir con P_DXCC de Swisslog."""
+    global _pfx_a_dxcc
+    if not _pfx_cty: return
+    if _pfx_a_dxcc:  # ya construido — no reconstruir ni loguear
+        return
+    nombre_a_num = {}; counter = 1; pfx_map = {}
+    for pfx, (nombre, lat, lon) in _pfx_cty.items():
+        if nombre not in nombre_a_num:
+            nombre_a_num[nombre] = counter; counter += 1
+        # Claves en MAYÚSCULAS — Swisslog P_DXCC siempre está en mayúsculas
+        pfx_map[pfx.upper()] = (nombre_a_num[nombre], nombre)
+    _pfx_a_dxcc = pfx_map
+    log.info("Prefix->DXCC table built from cty.dat: %d prefixes.", len(pfx_map))
 
 # ── Cluster ───────────────────────────────────────────────────────────────────
 def extraer_propagacion(c):
@@ -741,7 +824,14 @@ def enviar_telegram(msg, cfg):
 # ── Hilos monitor ─────────────────────────────────────────────────────────────
 def hilo_recarga_log():
     while True:
-        time.sleep(60); log.info(_t("log_reloading")); cargar_log_hrd()
+        try:
+            mins = float(leer_config().get("log_refresh_minutes", 1))
+            mins = max(0.5, mins)  # mínimo 30 segundos
+        except Exception:
+            mins = 1
+        time.sleep(mins * 60)
+        log.info(_t("log_reloading"))
+        cargar_log()
 
 def bucle_cluster():
     while True:
@@ -860,8 +950,18 @@ def api_config_update():
             lat, lon = maidenhead_to_latlon(new_data["locator"])
             if lat is not None:
                 new_data["qth_lat"] = lat; new_data["qth_lon"] = lon
+        # Detectar si cambia log_type o log_path — disparar recarga inmediata
+        reload_log = (
+            ("log_type" in new_data and new_data["log_type"] != current.get("log_type")) or
+            ("log_path" in new_data and new_data["log_path"] != current.get("log_path","") and new_data["log_path"]) or
+            ("hrd_xml_dir" in new_data and new_data["hrd_xml_dir"] != current.get("hrd_xml_dir","") and new_data["hrd_xml_dir"])
+        )
         current.update(new_data)
         _write_json(CONFIG_PATH, current)
+        if reload_log:
+            import threading
+            _limpiar_stats_log()
+            threading.Thread(target=cargar_log, daemon=True).start()
         return jsonify({"ok": True, "config": current})
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)}), 500
@@ -907,7 +1007,9 @@ def api_browse():
     Sin /hostfs — trabaja directamente con el filesystem real.
     Soporta navegación entre unidades (C:\\, D:\\, etc.) y directorios.
     """
-    path = request.args.get("path", "").strip()
+    path   = request.args.get("path", "").strip()
+    exts_q = request.args.get("exts", "").strip()
+    exts   = [e.strip().lower() for e in exts_q.split(",") if e.strip()] if exts_q else []
 
     # Listar unidades disponibles si no hay path o se pide la raíz virtual
     if not path or path in ("/", "\\", "drives"):
@@ -916,7 +1018,7 @@ def api_browse():
             "ok": True,
             "path": "drives",
             "host_path": "Este equipo",
-            "dirs": drives,
+            "dirs": drives, "files": [], "parent": None, "is_drives_root": True,
             "parent": None,
             "is_drives_root": True,
         })
@@ -930,26 +1032,29 @@ def api_browse():
         if not os.path.isdir(path):
             path = os.path.dirname(path) or path
         entries = os.listdir(path)
-        dirs    = sorted([e for e in entries
-                          if os.path.isdir(os.path.join(path, e)) and not e.startswith(".")])
-        # Calcular parent: si estamos en la raíz de una unidad (C:\) → volver a "drives"
+        dirs  = sorted([e for e in entries
+                         if os.path.isdir(os.path.join(path, e)) and not e.startswith(".")],
+                        key=lambda x: x.lower())
+        files = []
+        if exts:
+            files = sorted([e for e in entries
+                             if os.path.isfile(os.path.join(path, e))
+                             and any(e.lower().endswith(x) for x in exts)],
+                            key=lambda x: x.lower())
         parent = _parent_path(path)
         return jsonify({
-            "ok": True,
-            "path": path,
-            "host_path": path,
-            "dirs": dirs,
-            "parent": parent,
+            "ok": True, "path": path, "host_path": path,
+            "dirs": dirs, "files": files, "parent": parent,
         })
     except PermissionError:
         parent = _parent_path(path)
         return jsonify({
             "ok": False, "path": path, "host_path": path,
-            "dirs": [], "parent": parent, "error": "Sin permiso"
+            "dirs": [], "files": [], "parent": parent, "error": "Sin permiso"
         })
     except Exception as e:
         return jsonify({"ok": False, "error": str(e), "path": path,
-                        "host_path": path, "dirs": [], "parent": None})
+                        "host_path": path, "dirs": [], "files": [], "parent": None})
 
 def _get_windows_drives():
     """Devuelve lista de letras de unidad disponibles (C:, D:, ...)."""
@@ -1002,6 +1107,29 @@ def api_alerts_stream():
         headers={"Cache-Control":"no-cache","X-Accel-Buffering":"no"}
     )
 
+@app.route("/api/shutdown", methods=["GET","POST"])
+def api_shutdown():
+    """Detiene el proceso — solo disponible en versión Windows.
+    GET: devuelve info (para detección de plataforma).
+    POST: apaga el proceso.
+    """
+    if request.method == "GET":
+        return jsonify({"ok": True, "platform": "windows"})
+    log.info(_t("tray_stop"))
+    import threading
+    def _stop():
+        import time; time.sleep(0.5); os._exit(0)
+    threading.Thread(target=_stop, daemon=True).start()
+    return jsonify({"ok": True})
+
+@app.route("/api/log/reload", methods=["POST"])
+def api_log_reload():
+    """Fuerza recarga inmediata del log — llamado tras cambiar tipo o path."""
+    import threading
+    _limpiar_stats_log()
+    threading.Thread(target=cargar_log, daemon=True).start()
+    return jsonify({"ok": True})
+
 @app.route("/api/telegram/test", methods=["POST"])
 def api_telegram_test():
     cfg     = leer_config()
@@ -1023,6 +1151,82 @@ def api_telegram_test():
         if data.get("ok"): return jsonify({"ok": True, "message_id": data["result"]["message_id"]})
         return jsonify({"ok": False, "error": data.get("description","Error Telegram")}), 400
     except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+# ── Detección y instalación de DAO (para Swisslog MDB) ───────────────────────
+def _verificar_dao():
+    """Verifica si DAO está disponible. Retorna (bool, prog_id_o_error)."""
+    global _dao_disponible
+    if sys.platform != "win32":
+        _dao_disponible = True; return True, ""
+    try:
+        import comtypes.client
+        # Cuando corre como .exe, redirigir caché de comtypes a DATA_DIR
+        # evita el timeout por intentar escribir en sys._MEIPASS (read-only)
+        if getattr(sys, "frozen", False):
+            import comtypes.client
+            comtypes.client.gen_dir = os.path.join(DATA_DIR, "comtypes_cache")
+            os.makedirs(comtypes.client.gen_dir, exist_ok=True)
+        for prog_id in ("DAO.DBEngine.120", "DAO.DBEngine.36"):
+            try:
+                comtypes.client.CreateObject(prog_id)
+                _dao_disponible = True
+                log.info("DAO disponible: %s", prog_id)
+                return True, prog_id
+            except Exception:
+                continue
+        _dao_disponible = False
+        return False, "DAO not found"
+    except ImportError:
+        _dao_disponible = False
+        return False, "comtypes not installed"
+
+@app.route("/api/dao/status")
+def api_dao_status():
+    """Devuelve si DAO está disponible — usa estado cacheado, no reverifica."""
+    if _dao_disponible is None:
+        ok, msg = _verificar_dao()
+    else:
+        ok  = _dao_disponible
+        msg = "" if ok else "DAO not available"
+    return jsonify({"available": ok, "message": msg})
+
+@app.route("/api/dao/install", methods=["POST"])
+def api_dao_install():
+    """Descarga e instala Microsoft Access Database Engine 2016 (64 bits)."""
+    import urllib.request, subprocess, tempfile
+    url = "https://download.microsoft.com/download/3/5/C/35C84C36-661A-44E6-9324-8786B8DBE231/accessdatabaseengine_X64.exe"
+    try:
+        log.info("Descargando Microsoft Access Database Engine 2016...")
+        tmp = os.path.join(tempfile.gettempdir(), "accessdatabaseengine_X64.exe")
+        def _progress(count, block, total):
+            pass
+        urllib.request.urlretrieve(url, tmp)
+        log.info("Instalando Microsoft Access Database Engine 2016...")
+        # ShellExecute con 'runas' para elevar privilegios UAC
+        import ctypes
+        ret = ctypes.windll.shell32.ShellExecuteW(
+            None, "runas", tmp, "/quiet /norestart", None, 1
+        )
+        # ShellExecute devuelve >32 si se lanzó correctamente
+        if ret > 32:
+            log.info("Instalador lanzado con privilegios de administrador.")
+            # Esperar a que termine (máx 120s)
+            import time
+            for _ in range(24):
+                time.sleep(5)
+                ok, ver = _verificar_dao()
+                if ok:
+                    log.info("Microsoft Access Database Engine instalado correctamente.")
+                    return jsonify({"ok": True, "restart_required": False})
+            # Si no detectamos DAO tras esperar, puede que requiera reinicio
+            return jsonify({"ok": True, "restart_required": True})
+        else:
+            err = f"ShellExecute error code: {ret}"
+            log.error("Error lanzando instalador DAO: %s", err)
+            return jsonify({"ok": False, "error": err}), 500
+    except Exception as e:
+        log.error("Error instalando DAO: %s", e)
         return jsonify({"ok": False, "error": str(e)}), 500
 
 # ── Tray icon ─────────────────────────────────────────────────────────────────
@@ -1089,11 +1293,22 @@ def _abrir_navegador():
 # ── Main ──────────────────────────────────────────────────────────────────────
 def main():
     global _pfx_cty
+    # Configurar comtypes ANTES de cualquier uso — evita timeout en .exe PyInstaller
+    if getattr(sys, "frozen", False):
+        try:
+            import comtypes.client
+            _cache_dir = os.path.join(DATA_DIR, "comtypes_cache")
+            os.makedirs(_cache_dir, exist_ok=True)
+            comtypes.client.gen_dir = _cache_dir
+        except Exception:
+            pass
     inicializar_config(); inicializar_flags(); cfg = leer_config()
     log.info(_t("data_dir"), DATA_DIR)
     log.info(_t("startup_call"), cfg.get("callsign","?"), cfg.get("locator","?"))
-    actualizar_bigcty(CTY_PATH); _pfx_cty = cargar_cty_dat(CTY_PATH); cargar_log_hrd()
+    actualizar_bigcty(CTY_PATH); _pfx_cty = cargar_cty_dat(CTY_PATH); cargar_log()
 
+    if _dao_disponible is None:
+        _verificar_dao()  # solo verificar una vez al arrancar
     threading.Thread(target=hilo_recarga_log,    daemon=True).start()
     threading.Thread(target=hilo_actualizar_cty, daemon=True).start()
 

@@ -95,6 +95,8 @@ header{background:var(--bg2);border-bottom:2px solid var(--border);padding:0 20p
 .modal-item:last-child{border-bottom:none}
 .modal-item:hover{background:rgba(0,160,220,0.07)}
 .modal-item.up{color:var(--warn)}.modal-item.dir{color:var(--accent)}.modal-item.drive{color:var(--green)}.modal-item.empty{color:var(--text-dim);cursor:default}
+.modal-item.file{color:var(--text-hi)}
+.modal-item.file.selected{background:rgba(0,160,220,0.12);color:var(--accent)}
 .modal-actions{display:flex;gap:8px;justify-content:flex-end}
 .modal-btn{font-family:var(--mono);font-size:11px;padding:6px 14px;border-radius:3px;border:1px solid var(--border);background:var(--bg3);color:var(--text-label);cursor:pointer;transition:all .15s}
 .modal-btn:hover{border-color:var(--accent);color:var(--accent)}
@@ -159,6 +161,7 @@ header{background:var(--bg2);border-bottom:2px solid var(--border);padding:0 20p
     <span class="logo-call" id="hdr-call">NOCALL</span>
   </div>
   <div class="header-right">
+      <button class="hdr-btn" id="btn-stop-svc" onclick="stopService()" style="display:none;border-color:var(--red);color:var(--red)">⏹ <span data-i="stop_service"></span></button>
     <span class="refresh-tag" id="refresh-tag">—</span>
     <button class="hdr-btn active" id="btn-es" onclick="setLang('es')">🇪🇸 ES</button>
     <button class="hdr-btn"        id="btn-en" onclick="setLang('en')">🇬🇧 EN</button>
@@ -171,6 +174,25 @@ header{background:var(--bg2);border-bottom:2px solid var(--border);padding:0 20p
     </div>
   </div>
 </header>
+
+<!-- Modal DAO no disponible -->
+<div class="modal-overlay" id="dao-modal">
+  <div class="modal-box" style="max-width:440px">
+    <div class="modal-title" style="color:var(--warn)">⚠ Microsoft Access Database Engine</div>
+    <div style="font-family:var(--mono);font-size:12px;color:var(--text);line-height:1.7;margin:8px 0 16px">
+      <span data-i="dao_msg1"></span><br>
+      <span data-i="dao_msg2"></span>
+    </div>
+    <div id="dao-progress" style="display:none;font-family:var(--mono);font-size:11px;color:var(--accent);margin-bottom:12px">
+      <span class="spin"></span> <span id="dao-progress-txt"></span>
+    </div>
+    <div id="dao-result" style="display:none;font-family:var(--mono);font-size:11px;margin-bottom:12px"></div>
+    <div class="modal-actions">
+      <button class="modal-btn" onclick="closeDaoModal()" data-i="dao_close">Cerrar</button>
+      <button class="modal-btn primary" id="btn-dao-install" onclick="installDao()" data-i="dao_install">Instalar automáticamente</button>
+    </div>
+  </div>
+</div>
 
 <!-- Modal explorador Windows -->
 <div class="modal-overlay" id="dir-modal">
@@ -189,7 +211,7 @@ header{background:var(--bg2);border-bottom:2px solid var(--border);padding:0 20p
 
   <!-- HRD LOG -->
   <div class="card">
-    <div class="card-title">📋 <span data-i="log_hrd"></span></div>
+    <div class="card-title">📋 <span data-i="log_section"></span></div>
     <div class="stat-grid" style="margin-bottom:14px">
       <div class="stat"><div class="stat-label" data-i="qsos_total"></div><div class="stat-value" id="s-qsos">—</div></div>
       <div class="stat"><div class="stat-label" data-i="dxcc_worked"></div><div class="stat-value green" id="s-worked">—</div></div>
@@ -208,10 +230,31 @@ header{background:var(--bg2);border-bottom:2px solid var(--border);padding:0 20p
     </div>
     <div class="edit-hint" id="locator-hint"></div>
     <div class="edit-row">
+      <span class="edit-label" data-i="cfg_log_type"></span>
+      <select class="edit-input" id="cfg-log-type" onchange="onLogTypeChange()" style="cursor:pointer">
+        <option value="hrd_xml">HRD XML</option>
+        <option value="swisslog_mdb">Swisslog MDB</option>
+        <option value="log4om_sqlite">Log4OM SQLite</option>
+        <option value="adif">ADIF</option>
+      </select>
+    </div>
+    <div class="edit-row" id="row-xml-dir">
       <span class="edit-label" data-i="cfg_xml_dir"></span>
       <input class="edit-input" id="cfg-xml-dir" type="text" placeholder="C:\Users\..."
              onblur="saveCfg('hrd_xml_dir',this.value,this)" style="flex:1">
       <button class="btn-browse" onclick="openDirModal()">📂</button>
+    </div>
+    <div class="edit-row" id="row-log-path" style="display:none">
+      <span class="edit-label" id="lbl-log-path" data-i="cfg_log_path"></span>
+      <input class="edit-input" id="cfg-log-path" type="text"
+             onblur="saveLogPath(this.value,this)" style="flex:1">
+      <button class="btn-browse" onclick="openFileModal()">📂</button>
+    </div>
+    <div class="edit-row">
+      <span class="edit-label" data-i="cfg_refresh_mins"></span>
+      <input class="edit-input" id="cfg-refresh-mins" type="number" min="1" max="60"
+             style="max-width:70px" onblur="saveCfg('log_refresh_minutes',this.value,this)">
+      <span style="font-family:var(--mono);font-size:11px;color:var(--text-dim);margin-left:6px" data-i="cfg_refresh_mins_unit"></span>
     </div>
     <div class="info-row" style="margin-top:8px">
       <span class="info-key" data-i="big_cty"></span><span class="info-val" id="i-cty">—</span>
@@ -220,7 +263,7 @@ header{background:var(--bg2);border-bottom:2px solid var(--border);padding:0 20p
       <span class="info-key" data-i="pfx_cty"></span><span class="info-val" id="i-pfxcty">—</span>
     </div>
     <div class="info-row">
-      <span class="info-key" data-i="xml_active"></span><span class="info-val accent" id="i-xml">—</span>
+      <span class="info-key" id="lbl-active-file" data-i="xml_active"></span><span class="info-val accent" id="i-xml">—</span>
     </div>
   </div>
 
@@ -336,10 +379,10 @@ header{background:var(--bg2);border-bottom:2px solid var(--border);padding:0 20p
 <script>
 const I18N={
 es:{
-  log_hrd:"Log HRD",qsos_total:"QSOs totales",dxcc_worked:"DXCC trabajados",
+  log_section:"Log",log_hrd:"Log HRD",stop_service:"Detener",dao_msg1:"Microsoft Access Database Engine no está instalado.",dao_msg2:"Necesario para Swisslog MDB. Puedes instalarlo automáticamente o usar otro tipo de log.",dao_close:"Cerrar",dao_install:"Instalar automáticamente",dao_installing:"Descargando... Acepta el aviso UAC de administrador que aparecerá.",dao_ok:"Instalado correctamente. Reinicia DX Monitor.",dao_restart:"Instalado. Reinicia DX Monitor para aplicar.",dao_error:"Error:",qsos_total:"QSOs totales",dxcc_worked:"DXCC trabajados",
   dxcc_conf:"DXCC confirmados",pfx_table:"Prefijos tabla",
-  xml_active:"XML activo:",big_cty:"Big CTY:",pfx_cty:"Prefijos cty.dat:",
-  cfg_callsign:"Indicativo:",cfg_locator:"Locator:",cfg_xml_dir:"Directorio XML:",
+  xml_active:"Archivo activo:",big_cty:"Big CTY:",pfx_cty:"Prefijos cty.dat:",
+  cfg_callsign:"Indicativo:",cfg_locator:"Locator:",cfg_log_type:"Tipo de log:",cfg_xml_dir:"Directorio XML:",cfg_log_path:"Fichero log:",log_path_mdb:"Fichero MDB:",log_path_sqlite:"Fichero SQLite:",log_path_adif:"Fichero ADIF:",cfg_refresh_mins:"Tiempo refresco:",cfg_refresh_mins_unit:"min",
   dx_cluster:"DX Cluster",c_host:"Host",c_estado:"Estado",
   c_last_spot:"Último spot",c_errors:"Errores reconexión",c_updated:"Actualizado",
   c_connect:"Conectar",c_disconnect:"Desconectar",
@@ -376,10 +419,10 @@ es:{
   dir_title:"Seleccionar directorio",dir_cancel:"Cancelar",dir_select:"Seleccionar",
 },
 en:{
-  log_hrd:"HRD Log",qsos_total:"Total QSOs",dxcc_worked:"DXCC worked",
+  log_section:"Log",log_hrd:"HRD Log",stop_service:"Stop",dao_msg1:"Microsoft Access Database Engine is not installed.",dao_msg2:"Required for Swisslog MDB. Install automatically or switch to another log type.",dao_close:"Close",dao_install:"Install automatically",dao_installing:"Downloading... Accept the UAC administrator prompt that will appear.",dao_ok:"Installed successfully. Restart DX Monitor.",dao_restart:"Installed. Restart DX Monitor to apply.",dao_error:"Error:",qsos_total:"Total QSOs",dxcc_worked:"DXCC worked",
   dxcc_conf:"DXCC confirmed",pfx_table:"Prefix table",
-  xml_active:"Active XML:",big_cty:"Big CTY:",pfx_cty:"cty.dat prefixes:",
-  cfg_callsign:"Callsign:",cfg_locator:"Locator:",cfg_xml_dir:"XML directory:",
+  xml_active:"Active file:",big_cty:"Big CTY:",pfx_cty:"cty.dat prefixes:",
+  cfg_callsign:"Callsign:",cfg_locator:"Locator:",cfg_log_type:"Log type:",cfg_xml_dir:"XML directory:",cfg_log_path:"Log file:",log_path_mdb:"MDB file:",log_path_sqlite:"SQLite file:",log_path_adif:"ADIF file:",cfg_refresh_mins:"Refresh interval:",cfg_refresh_mins_unit:"min",
   dx_cluster:"DX Cluster",c_host:"Host",c_estado:"Status",
   c_last_spot:"Last spot",c_errors:"Reconnect errors",c_updated:"Updated",
   c_connect:"Connect",c_disconnect:"Disconnect",
@@ -416,7 +459,7 @@ en:{
   dir_title:"Select directory",dir_cancel:"Cancel",dir_select:"Select",
 }};
 
-let _lang=localStorage.getItem("dx_lang")||"es";
+let _lang=localStorage.getItem("dx_lang")||(navigator.language||navigator.userLanguage||"en").startsWith("es")?"es":"en";
 let _theme=localStorage.getItem("dx_theme")||"dark";
 let _config=null,_flags=null,_flagTimer=null;
 const ALL_BANDS=["160m","80m","60m","40m","30m","20m","17m","15m","12m","10m","6m","4m","2m","70cm","23cm"];
@@ -548,6 +591,10 @@ function fillConfig(){
   setVal("cfg-callsign", _config.callsign||"");
   setVal("cfg-locator",  _config.locator||"");
   setVal("cfg-xml-dir",  _config.hrd_xml_dir||"");
+  setVal("cfg-log-path", _config.log_path||"");
+  const lt=document.getElementById("cfg-log-type");
+  if(lt)lt.value=_config.log_type||"hrd_xml";
+  onLogTypeChange(false);
   setVal("cfg-cl-host",  _config.cluster_host||"");
   setVal("cfg-cl-port",  _config.cluster_port||"");
   setVal("cfg-cl-login", _config.cluster_login||"");
@@ -558,6 +605,7 @@ function fillConfig(){
   const st=document.getElementById("cfg-time-mode");  if(st)st.value=_config.time_mode||"local";
   if(_config.timezone&&_config.timezone!=="__custom__")
     setVal("cfg-tz-custom", _config.timezone);
+  setVal("cfg-refresh-mins", _config.log_refresh_minutes||1);
   buildTimezoneSelect();  // aplica timezone y muestra/oculta campo manual
   document.getElementById("hdr-call").textContent=(_config.callsign||"NOCALL").toUpperCase();
   updateLocHint();
@@ -614,11 +662,13 @@ function updateStats(d){
   document.getElementById("badge-monitor").className="badge-monitor "+(alive?"alive":"dead");
   document.getElementById("dot-monitor").className="dot "+(alive?"pulse":"");
   document.getElementById("badge-txt").textContent=alive?t("monitor_active"):t("monitor_offline");
-  st("s-qsos",   d.qsos_total??"—");
-  st("s-worked", d.dxcc_trabajados??"—");
-  st("s-conf",   d.dxcc_confirmados??"—");
-  st("s-pfx",    d.pfx_tabla!=null?d.pfx_tabla.toLocaleString()+" pfx":"—");
-  st("i-xml",    d.xml_hrd_path||"—");
+  const logOk = d.log_source && d.log_source !== "";
+  st("s-qsos",   logOk ? (d.qsos_total??0) : "—");
+  st("s-worked", logOk ? (d.dxcc_trabajados??0) : "—");
+  st("s-conf",   logOk ? (d.dxcc_confirmados??0) : "—");
+  const showPfx = logOk && d.pfx_tabla != null && d.pfx_tabla > 0;
+  st("s-pfx",    showPfx ? d.pfx_tabla.toLocaleString()+" pfx" : "—");
+  st("i-xml",    logOk ? (d.xml_hrd_path||"—") : "—");
   st("i-cty",    d.cty_dat_mtime||"—");
   st("i-pfxcty", d.pfx_cty!=null?d.pfx_cty.toLocaleString()+" pfx":"—");
   st("c-host",   d.cluster_host||"—");
@@ -633,6 +683,74 @@ function updateStats(d){
   const eel=document.getElementById("c-err");
   eel.textContent=errs; eel.className="cluster-val "+(errs>0?"warn":"ok");
   st("c-upd", formatAge(d.status_age_sec));
+}
+
+// ══ LOG TYPE ══════════════════════════════════════════════════════════════════
+async function onLogTypeChange(save=true){
+  const lt = document.getElementById("cfg-log-type");
+  if(!lt) return;
+  const v = lt.value;
+  const rowDir  = document.getElementById("row-xml-dir");
+  const rowPath = document.getElementById("row-log-path");
+  const lbl     = document.getElementById("lbl-log-path");
+  if(v === "hrd_xml"){
+    rowDir.style.display  = "flex";
+    rowPath.style.display = "none";
+  } else {
+    rowDir.style.display  = "none";
+    rowPath.style.display = "flex";
+    const lblKey = v==="swisslog_mdb"?"log_path_mdb":v==="log4om_sqlite"?"log_path_sqlite":"log_path_adif";
+    if(lbl) lbl.textContent = t(lblKey);
+  }
+  if(save){
+    const pathInput = document.getElementById("cfg-log-path");
+    if(pathInput){ pathInput.value = ""; await saveCfg("log_path", "", null); }
+    limpiarStatsLog();
+    await saveCfg("log_type", v, lt);
+    if(v === "swisslog_mdb") checkDaoStatus();
+    if(v === "hrd_xml"){
+      const xmlDir = document.getElementById("cfg-xml-dir");
+      if(xmlDir && xmlDir.value.trim()) await recargarLog();
+    }
+  }
+}
+
+function limpiarStatsLog(){
+  st("s-qsos",   "—");
+  st("s-worked", "—");
+  st("s-conf",   "—");
+  st("s-pfx",    "—");
+  st("i-xml",    "—");
+}
+
+async function saveLogPath(value, el){
+  if(!value.trim()) return;
+  await saveCfg("log_path", value, el);
+  await recargarLog();
+}
+
+async function openFileModal(){
+  // Reutiliza el explorador de directorios pero selecciona ficheros también
+  const saved = document.getElementById("cfg-log-path").value.trim();
+  const lt = document.getElementById("cfg-log-type");
+  const logType = lt ? lt.value : "adif";
+  const initPath = saved || "drives";
+  _fileMode = true;
+  _fileExt  = logType === "swisslog_mdb" ? ".mdb" :
+              logType === "log4om_sqlite" ? [".sqlite",".db"] :
+              [".adi",".adif"];
+  document.getElementById("dir-modal").classList.add("open");
+  document.getElementById("btn-select-dir").disabled = !saved;
+  if(saved) _dirSelectedPath = saved;
+  await loadDir(initPath);
+}
+
+// ══ RECARGAR LOG ═════════════════════════════════════════════════════════════
+async function recargarLog(){
+  try{
+    limpiarStatsLog();
+    await fetch("/api/log/reload", {method:"POST"});
+  }catch(e){ console.error("recargarLog:", e); }
 }
 
 // ══ GUARDAR CONFIG ════════════════════════════════════════════════════════════
@@ -682,7 +800,9 @@ async function clusterCmd(action){
 // Solución: guardar todos los paths en un array y referenciarlos por índice numérico.
 let _dirCurrent = "drives";
 let _dirSelectedPath = "";
-let _dirPaths = [];   // índice → path real (puede contener cualquier carácter)
+let _dirPaths = [];
+let _fileMode = false;
+let _fileExt  = null;   // índice → path real (puede contener cualquier carácter)
 
 async function openDirModal(){
   const saved = document.getElementById("cfg-xml-dir").value.trim();
@@ -705,7 +825,12 @@ async function loadDir(path){
   list.innerHTML = `<div class="modal-item empty"><span class="spin"></span></div>`;
   _dirPaths = [];   // resetear tabla de paths en cada navegación
   try{
-    const r = await fetch("/api/browse?path=" + encodeURIComponent(path));
+    let browseUrl = "/api/browse?path=" + encodeURIComponent(path);
+    if(_fileMode && _fileExt){
+      const exts = Array.isArray(_fileExt) ? _fileExt.join(",") : _fileExt;
+      browseUrl += "&exts=" + encodeURIComponent(exts);
+    }
+    const r = await fetch(browseUrl);
     const d = await r.json();
     _dirCurrent = d.path || path;
 
@@ -748,12 +873,35 @@ async function loadDir(path){
         el.className = "modal-item dir";
         el.textContent = "📁 " + name;
         el.onclick = () => {
-          _dirSelectedPath = full;
-          document.getElementById("btn-select-dir").disabled = false;
-          loadDir(full);
+          if(_fileMode){
+            // En modo fichero, entrar al directorio pero no seleccionarlo
+            loadDir(full);
+          } else {
+            _dirSelectedPath = full;
+            document.getElementById("btn-select-dir").disabled = false;
+            loadDir(full);
+          }
         };
         frag.appendChild(el);
       });
+      // Ficheros (solo en modo selección de fichero)
+      if(_fileMode && d.files && d.files.length){
+        d.files.forEach(name => {
+          const sep = (_dirCurrent.endsWith("\\") || _dirCurrent.endsWith("/")) ? "" : "\\";
+          const full = _dirCurrent + sep + name;
+          const el = document.createElement("div");
+          el.className = "modal-item file";
+          el.textContent = "📄 " + name;
+          el.onclick = () => {
+            // Deseleccionar fichero anterior
+            document.querySelectorAll(".modal-item.file.selected").forEach(x => x.classList.remove("selected"));
+            el.classList.add("selected");
+            _dirSelectedPath = full;
+            document.getElementById("btn-select-dir").disabled = false;
+          };
+          frag.appendChild(el);
+        });
+      }
     }
 
     list.innerHTML = "";
@@ -785,10 +933,18 @@ async function loadDir(path){
 
 async function confirmDir(){
   if(!_dirSelectedPath) return;
-  const input = document.getElementById("cfg-xml-dir");
-  input.value = _dirSelectedPath;
   closeDirModal();
-  await saveCfg("hrd_xml_dir", _dirSelectedPath, input);
+  if(_fileMode){
+    _fileMode = false;
+    const input = document.getElementById("cfg-log-path");
+    input.value = _dirSelectedPath;
+    await saveCfg("log_path", _dirSelectedPath, input);
+    await recargarLog();
+  } else {
+    const input = document.getElementById("cfg-xml-dir");
+    input.value = _dirSelectedPath;
+    await saveCfg("hrd_xml_dir", _dirSelectedPath, input);
+  }
 }
 
 // ══ ALERTAS ════════════════════════════════════════════════════════════════════
@@ -948,10 +1104,88 @@ function initAlertStream(){
   };
 }
 
+// ══ DAO INSTALL ══════════════════════════════════════════════════════════════
+function closeDaoModal(){ document.getElementById("dao-modal").classList.remove("open"); }
+
+async function checkDaoStatus(){
+  // Solo verificar si el tipo de log es swisslog_mdb
+  const lt = document.getElementById("cfg-log-type");
+  if(!lt || lt.value !== "swisslog_mdb") return;
+  try{
+    const r = await fetch("/api/dao/status");
+    if(!r.ok) return;  // Docker — endpoint no existe
+    const d = await r.json();
+    if(!d.available){
+      document.getElementById("dao-modal").classList.add("open");
+    }
+  }catch(e){
+    // Docker no tiene este endpoint — normal
+  }
+}
+
+async function installDao(){
+  const btn = document.getElementById("btn-dao-install");
+  const prog = document.getElementById("dao-progress");
+  const progTxt = document.getElementById("dao-progress-txt");
+  const res = document.getElementById("dao-result");
+  btn.disabled = true;
+  prog.style.display = "block";
+  progTxt.textContent = t("dao_installing");
+  res.style.display = "none";
+  try{
+    const r = await fetch("/api/dao/install", {method:"POST"});
+    const d = await r.json();
+    prog.style.display = "none";
+    res.style.display = "block";
+    if(d.ok){
+      res.style.color = "var(--green)";
+      res.textContent = "✓ " + (d.restart_required ? t("dao_restart") : t("dao_ok"));
+      btn.style.display = "none";
+    } else {
+      res.style.color = "var(--red)";
+      res.textContent = "✗ " + t("dao_error") + " " + (d.error||"");
+      btn.disabled = false;
+    }
+  }catch(e){
+    prog.style.display = "none";
+    res.style.display = "block";
+    res.style.color = "var(--red)";
+    res.textContent = "✗ " + e.message;
+    btn.disabled = false;
+  }
+}
+
+// ══ STOP SERVICE (Windows only) ═════════════════════════════════════════════
+async function stopService(){
+  if(!confirm(_lang==="es"?"¿Detener DX Monitor?":"Stop DX Monitor?")) return;
+  try{
+    await fetch("/api/shutdown", {method:"POST"});
+    document.body.innerHTML = "<div style='display:flex;align-items:center;justify-content:center;height:100vh;font-family:monospace;color:#00d4ff;background:#0a0e14;font-size:18px'>DX Monitor detenido.</div>";
+  }catch(e){}
+}
+
+async function checkWindowsMode(){
+  // GET /api/shutdown solo existe en versión Windows
+  try{
+    const r = await fetch("/api/shutdown");
+    if(r.ok){
+      const d = await r.json();
+      if(d.platform === "windows"){
+        const btn = document.getElementById("btn-stop-svc");
+        if(btn) btn.style.display = "flex";
+      }
+    }
+  }catch(e){
+    // Docker no tiene este endpoint — es normal
+  }
+}
+
 // ══ INIT ══════════════════════════════════════════════════════════════════════
 applyTheme();
 applyLang();
 loadInitialData();
+checkWindowsMode();
+setTimeout(checkDaoStatus, 2000);
 fetchStatus();
 setInterval(fetchStatus,10000);
 initAlertStream();
