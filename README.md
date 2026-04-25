@@ -1,182 +1,213 @@
-# DX Monitor Docker
+# DX Monitor
 
-Monitor de DX Cluster con alertas Telegram y dashboard web. Versión Docker del proyecto original DX Monitor (servicio systemd en `/opt/dx_monitor/`). Son proyectos independientes y no interfieren entre sí.
+DX Cluster monitor with Telegram alerts and web dashboard. Available for **Windows** (standalone `.exe`) and **Docker** (NAS/Linux).
 
-**Indicativo**: EA3TB | **Versión**: v13
+**Callsign**: EA3TB | **Version**: v1.1 | **Docker Hub**: `ea3tb/dx-monitor:latest`
 
----
-
-## Estructura del proyecto
-
-```
-/opt/dx_monitor_docker/
-├── docker-compose.yml
-├── README.md
-├── monitor/
-│   ├── Dockerfile
-│   ├── .dockerignore
-│   ├── requirements.txt         # requests
-│   ├── dx_monitor.py            # script principal
-│   └── band_plans.py            # planes IARU R1/R2/R3
-└── web/
-    ├── Dockerfile
-    ├── requirements.txt         # flask, requests
-    ├── app.py                   # API Flask puerto 8765
-    ├── static/
-    └── templates/
-        └── dashboard.html       # Dashboard ES/EN, dark/light
-```
-
-### Paths en tiempo de ejecución
-
-| Path (dentro del contenedor) | Descripción |
-|---|---|
-| `/app/` | Fuentes copiados por Docker en el build (WORKDIR) |
-| `/hostfs/` | Filesystem completo del host montado en solo lectura |
-| `/opt/dx_monitor_docker/` | Volumen `dx_docker_data` — datos persistentes |
-
-### Datos persistentes (volumen `dx_docker_data`)
-
-| Fichero | Escribe | Lee | Descripción |
-|---|---|---|---|
-| `config.json` | monitor / web | monitor / web | Configuración completa |
-| `flags.json` | monitor / web | monitor / web | Filtros de alerta |
-| `status.json` | monitor | web | Estado en tiempo real |
-| `dx_monitor.log` | monitor | web | Log del servicio |
-| `cty.dat` | monitor | monitor | Base de datos DXCC |
-| `cmd.json` | web | monitor | Canal de comandos connect/disconnect |
+![DX Monitor Dashboard](https://raw.githubusercontent.com/EA3TB/DX-Monitor/main/screenshots/dashboard.png)
 
 ---
 
-## Instalación
+![DX Monitor Alerts](https://raw.githubusercontent.com/EA3TB/DX-Monitor/main/screenshots/alerts.png)
 
-### Primera vez
+---
+
+## Documentation
+
+| | English | Español |
+|---|---|---|
+| ✈️ Telegram setup | [Guide](https://ea3tb.github.io/DX-Monitor/dx_monitor_telegram_ENG.html) | [Guía](https://ea3tb.github.io/DX-Monitor/dx_monitor_telegram_SPA.html) |
+| 🍓 Raspberry Pi install | [Guide](https://ea3tb.github.io/DX-Monitor/dx_monitor_raspberry_ENG.html) | [Guía](https://ea3tb.github.io/DX-Monitor/dx_monitor_raspberry_SPA.html) |
+
+---
+
+## Features
+
+- Real-time DX Cluster monitoring (CC11/VE7CC protocol)
+- Telegram alerts for new DXCC, new band, new mode, unconfirmed QSLs
+- Web dashboard with dark/light theme and ES/EN language
+- Alert filters: IARU region, bands, modes, alert types
+- Mode inference from frequency (FT8, FT4, CW, SSB)
+- Big CTY database auto-update
+- **Multi log source support**:
+  - HRD XML (Ham Radio Deluxe — automatic background export)
+  - Swisslog MDB (Microsoft Access database)
+  - Log4OM SQLite (version 2)
+  - ADIF (any logging software)
+- Configurable log refresh interval
+- SSE real-time alerts in dashboard (no polling)
+- Bilingual alert messages (ES/EN), local/UTC time
+
+---
+
+## Windows
+
+### Download
+
+Download `DXMonitor.exe` from [Releases](https://github.com/EA3TB/DX-Monitor/releases/latest) — no installation required, just run it.
+
+### Requirements
+
+- Windows 10/11 (64-bit)
+- No installation needed
+- For **Swisslog MDB** support: Microsoft Access Database Engine 2016 (the app will offer to install it automatically if missing)
+
+### Usage
+
+1. Run `DXMonitor.exe`
+2. Open `http://127.0.0.1:8765` in your browser
+3. Configure your callsign, log source, cluster and Telegram bot
+4. Click **Connect**
+
+### Build from source
+
+```powershell
+cd windows
+pip install flask requests pyinstaller tzdata pystray Pillow comtypes
+python generar_ico.py
+pyinstaller dx_monitor.spec --clean
+```
+
+---
+
+## Docker
+
+### Quick start
+
+Create a `docker-compose.yml` file:
+
+```yaml
+services:
+  dxmonitor:
+    image: ea3tb/dx-monitor:latest
+    container_name: dx_monitor_docker
+    restart: unless-stopped
+    ports:
+      - "8765:8765"
+    volumes:
+      - /:/hostfs:ro
+      - dx_docker_data:/opt/dx_monitor_docker
+      # Optional: mount a shared folder from your local PC (SMB/CIFS)
+      # Uncomment and adjust if you want to access MDB/SQLite/ADIF log files from your PC
+      # - pc_logs:/hostfs/mnt/pc_logs:ro
+    networks:
+      - dx_net
+
+volumes:
+  dx_docker_data:
+    driver: local
+  # Optional: SMB volume to access log files from a local PC
+  # Uncomment and adjust the IP address, share name and credentials
+  # pc_logs:
+  #   driver: local
+  #   driver_opts:
+  #     type: cifs
+  #     device: "//192.168.X.X/ShareName"
+  #     o: "guest,uid=1000,gid=1000,iocharset=utf8,vers=2.0"
+  #     # If the share requires a username and password, replace guest with:
+  #     # o: "username=USER,password=PASSWORD,uid=1000,gid=1000,iocharset=utf8,vers=2.0"
+
+networks:
+  dx_net:
+    driver: bridge
+```
+
+Then:
 
 ```bash
-cd /opt/dx_monitor_docker
-docker compose build --no-cache
 docker compose up -d
 ```
 
-Al arrancar por primera vez todos los campos de configuración están vacíos. Accede al dashboard en `http://<ip-nas>:8765` y rellena la configuración.
+Open `http://<nas-ip>:8765` in your browser and configure from the dashboard.
 
-### Rebuild tras cambios
-
-```bash
-# Solo dashboard HTML — sin rebuild (segundos)
-docker cp ./web/templates/dashboard.html dx_web_docker:/app/templates/dashboard.html
-docker restart dx_web_docker
-
-# Rebuild parcial web (app.py cambia)
-docker compose build --no-cache web && docker compose up -d
-
-# Rebuild parcial monitor (dx_monitor.py cambia)
-docker compose build --no-cache monitor && docker compose up -d
-
-# Rebuild completo
-docker compose build --no-cache && docker compose up -d
-```
-
-> Usar siempre `--no-cache` para evitar capas antiguas.
-
-### Migración desde versión anterior
+### Useful commands
 
 ```bash
-docker compose down
-docker run --rm \
-  -v dx_data:/old \
-  -v dx_docker_data:/new \
-  alpine sh -c "cp -av /old/. /new/"
-docker compose build --no-cache && docker compose up -d
-```
-
----
-
-## Configuración
-
-Toda la configuración se gestiona desde el dashboard y se persiste en `config.json`. No hay variables de entorno que mantener.
-
-| Campo | Descripción |
-|---|---|
-| Indicativo | Indicativo de radioaficionado |
-| Locator | Locator Maidenhead — calcula lat/lon automáticamente |
-| Directorio XML | Path en el host al directorio con XMLs de HRD — explorable desde el dashboard |
-| Cluster Host | Host del DX Cluster |
-| Cluster Port | Puerto TCP |
-| Cluster Login | Indicativo de login |
-| Cluster Password | Contraseña (campo ocultable con botón 👁) |
-| Bot Token | Token del bot de Telegram (campo ocultable con botón 👁) |
-| Chat ID | ID del chat de Telegram |
-| Idioma alertas | Español / English |
-| Zona horaria | Selector con 40+ zonas agrupadas por región + campo manual para cualquier zona IANA |
-| Hora | Local (según timezone) / UTC |
-
----
-
-## Filtros de alerta
-
-Configurables desde el dashboard, guardados en `flags.json`:
-
-- **Zona IARU**: R1 (Europa/África), R2 (Américas), R3 (Asia-Pacífico)
-- **Bandas activas**: selección individual o todo/nada
-- **Modos activos**: CW, SSB, RTTY, FT8, FT4
-- **Tipos de alerta**:
-  - País nuevo — DXCC nunca trabajado
-  - País trabajado — trabajado pero sin QSL
-  - Banda nueva — DXCC en banda no trabajada
-  - Banda sin QSL — banda trabajada, QSL pendiente
-  - Modo nuevo — DXCC/banda en modo no trabajado
-  - Modo sin QSL — modo trabajado, QSL pendiente
-
----
-
-## Cluster connect / disconnect
-
-El botón **Conectar** del dashboard escribe un comando en `cmd.json` que `dx_monitor.py` lee en su bucle principal. Al arrancar el contenedor:
-
-- Si hay `cluster_host` y `cluster_login` configurados → conecta automáticamente
-- Si los campos están vacíos → espera a que el usuario configure y pulse Conectar
-
----
-
-## Alertas en tiempo real (SSE)
-
-Las alertas aparecen en el dashboard instantáneamente mediante **Server-Sent Events**. `app.py` vigila `status.json` cada 0.5s y empuja los cambios a todos los clientes conectados. El polling de 10s solo actualiza stats, log y estado del cluster. Si se pierde la conexión SSE el dashboard reconecta automáticamente tras 5s.
-
----
-
-## Comandos útiles
-
-```bash
-# Logs en tiempo real
+# Real-time logs
 docker logs -f dx_monitor_docker
-docker logs -f dx_web_docker
 
-# Estado contenedores
+# Status
 docker compose ps
 
-# Parar / arrancar
+# Stop / start
 docker compose down
 docker compose up -d
 
-# Acceder al contenedor monitor
+# Access container shell
 docker exec -it dx_monitor_docker bash
 
-# Ver datos persistentes
-docker exec dx_monitor_docker ls -la /opt/dx_monitor_docker/
-
-# Ver config activa
+# View active config
 docker exec dx_monitor_docker cat /opt/dx_monitor_docker/config.json
 ```
 
 ---
 
-## Coexistencia con el servicio systemd
+## Configuration
 
-- **Servicio original**: `/opt/dx_monitor/` en el host, gestionado por systemd
-- **Docker**: `/opt/dx_monitor_docker/` en el host, volumen interno `dx_docker_data`
+All configuration is managed from the dashboard and saved to `config.json`. No environment variables needed.
 
-No arrancar ambos simultáneamente apuntando al mismo cluster con el mismo login.
+| Field | Description |
+|---|---|
+| Callsign | Your amateur radio callsign |
+| Locator | Maidenhead locator — auto-calculates lat/lon |
+| Log type | HRD XML / Swisslog MDB / Log4OM SQLite / ADIF |
+| Log file/directory | Path to your log file or XML directory |
+| Refresh interval | Log reload interval in minutes |
+| Cluster host | DX Cluster hostname |
+| Cluster port | TCP port |
+| Cluster login | Login callsign |
+| Cluster password | Password (hideable with 👁 button) |
+| Telegram token | Bot token (hideable with 👁 button) |
+| Telegram chat ID | Your chat ID |
+| Alert language | Spanish / English |
+| Timezone | 40+ zones grouped by region + manual IANA field |
+| Time mode | Local (per timezone) / UTC |
+
+---
+
+## Alert filters
+
+Configurable from the dashboard, saved to `flags.json`:
+
+- **IARU region**: R1 (Europe/Africa), R2 (Americas), R3 (Asia-Pacific)
+- **Active bands**: individual selection or all/none
+- **Active modes**: CW, SSB, RTTY, FT8, FT4
+- **Alert types**:
+  - New country — DXCC never worked
+  - Worked country — worked but no QSL
+  - New band — DXCC not worked on this band
+  - Band without QSL — band worked, QSL pending
+  - New mode — DXCC/band not worked in this mode
+  - Mode without QSL — mode worked, QSL pending
+
+---
+
+## Repository structure
+
+```
+/
+├── app/                    # Docker app source
+│   ├── main.py
+│   ├── log_readers.py
+│   ├── band_plans.py
+│   ├── requirements.txt
+│   ├── Dockerfile
+│   └── templates/
+│       └── dashboard.html
+├── windows/                # Windows build source
+│   ├── main_windows.py
+│   ├── log_readers.py
+│   ├── band_plans.py
+│   ├── dx_monitor.spec
+│   ├── generar_ico.py
+│   ├── compilar.bat
+│   ├── requirements_windows.txt
+│   ├── static/
+│   └── templates/
+│       └── dashboard.html
+├── docker-compose.yml      # End user Docker Compose
+└── screenshots/
+```
 
 ---
 
