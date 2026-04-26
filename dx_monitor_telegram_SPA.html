@@ -1,0 +1,523 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DX Monitor — Configuración de Telegram</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:ital,wght@0,300;0,400;0,600;0,700;1,400&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg:        #ffffff;
+    --bg2:       #f7f9fc;
+    --bg3:       #eef2f7;
+    --border:    #dce4ed;
+    --accent:    #0062cc;
+    --accent2:   #004a99;
+    --text:      #1a2535;
+    --text-dim:  #5a6a7e;
+    --text-hi:   #0a1525;
+    --code-bg:   #f0f4f8;
+    --code-fg:   #1a2535;
+    --code-bd:   #d0dcea;
+    --warn-bg:   #fffbea;
+    --warn-fg:   #7a4f00;
+    --warn-bd:   #e0b000;
+    --info-bg:   #f0f5ff;
+    --info-fg:   #003a80;
+    --info-bd:   #a0b8e0;
+    --green:     #1a7a4a;
+    --mono:      'IBM Plex Mono', monospace;
+    --sans:      'IBM Plex Sans', sans-serif;
+    --radius:    6px;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: var(--sans);
+    background: var(--bg);
+    color: var(--text);
+    font-size: 15px;
+    line-height: 1.65;
+  }
+
+  /* ── Header ── */
+  .page-header {
+    background: var(--accent);
+    padding: 36px 0 28px;
+    text-align: center;
+    position: relative;
+  }
+  .page-header::after {
+    content: '';
+    position: absolute;
+    bottom: 0; left: 0; right: 0;
+    height: 3px;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.4), transparent);
+  }
+  .page-header h1 {
+    font-family: var(--mono);
+    font-size: 26px;
+    font-weight: 600;
+    color: #fff;
+    letter-spacing: 3px;
+    margin-bottom: 6px;
+  }
+  .page-header .subtitle {
+    color: rgba(255,255,255,0.82);
+    font-size: 14px;
+    font-weight: 300;
+    margin-bottom: 4px;
+  }
+  .page-header .version {
+    font-family: var(--mono);
+    font-size: 12px;
+    color: rgba(255,255,255,0.55);
+  }
+
+  /* ── Layout ── */
+  .container {
+    max-width: 820px;
+    margin: 0 auto;
+    padding: 40px 28px 60px;
+  }
+
+  .intro {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 18px 22px;
+    margin-bottom: 32px;
+    color: var(--text-dim);
+    font-size: 14px;
+    line-height: 1.7;
+  }
+  .intro strong { color: var(--text); }
+
+  /* ── Section ── */
+  .section { margin-bottom: 36px; }
+
+  .section-title {
+    font-family: var(--mono);
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--accent);
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    padding-bottom: 8px;
+    border-bottom: 2px solid var(--accent);
+    margin-bottom: 16px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .step-num {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px; height: 24px;
+    background: var(--accent);
+    color: #fff;
+    border-radius: 50%;
+    font-size: 12px;
+    font-weight: 700;
+    flex-shrink: 0;
+  }
+
+  p { margin-bottom: 10px; }
+  p:last-child { margin-bottom: 0; }
+  strong { font-weight: 600; color: var(--text-hi); }
+
+  ul { padding-left: 0; list-style: none; margin-bottom: 12px; }
+  ul li {
+    padding: 4px 0 4px 18px;
+    position: relative;
+    color: var(--text-dim);
+    font-size: 14px;
+  }
+  ul li::before {
+    content: '›';
+    position: absolute; left: 0;
+    color: var(--accent);
+    font-weight: 700;
+  }
+  ul li strong { color: var(--text); }
+
+  /* ── Warn / Info ── */
+  .warn {
+    background: var(--warn-bg);
+    border: 1px solid var(--warn-bd);
+    border-left: 4px solid var(--warn-bd);
+    border-radius: var(--radius);
+    padding: 12px 16px;
+    font-size: 14px;
+    color: var(--warn-fg);
+    margin: 12px 0;
+  }
+  .info {
+    background: var(--info-bg);
+    border: 1px solid var(--info-bd);
+    border-left: 4px solid var(--accent);
+    border-radius: var(--radius);
+    padding: 12px 16px;
+    font-size: 14px;
+    color: var(--info-fg);
+    margin: 12px 0;
+  }
+  .info strong { color: var(--info-fg); }
+
+  /* ── Link block ── */
+  .link-block {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 10px 16px;
+    margin: 8px 0 12px;
+    font-family: var(--mono);
+    font-size: 13px;
+    color: var(--accent);
+    text-decoration: none;
+    transition: border-color .15s, background .15s;
+  }
+  .link-block:hover {
+    border-color: var(--accent);
+    background: #f0f5ff;
+  }
+
+  /* ── Code / dialogue blocks ── */
+  .code-wrap {
+    position: relative;
+    margin: 8px 0 16px;
+  }
+  pre {
+    background: var(--code-bg);
+    border: 1px solid var(--code-bd);
+    border-radius: var(--radius);
+    padding: 16px 18px;
+    padding-right: 82px;
+    font-family: var(--mono);
+    font-size: 13px;
+    color: var(--code-fg);
+    line-height: 1.7;
+    overflow-x: auto;
+    white-space: pre;
+  }
+  pre .comment { color: #8a9ab8; font-style: italic; }
+
+  .copy-btn {
+    position: absolute;
+    top: 8px; right: 8px;
+    background: #fff;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 4px 10px;
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--text-dim);
+    cursor: pointer;
+    transition: all .15s;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    white-space: nowrap;
+  }
+  .copy-btn:hover { border-color: var(--accent); color: var(--accent); background: #f0f5ff; }
+  .copy-btn.copied { border-color: var(--green); color: var(--green); background: #f0fff7; }
+
+  /* ── Dialogue (BotFather conversation) ── */
+  .dialogue {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 14px 18px;
+    margin: 8px 0 16px;
+    font-family: var(--mono);
+    font-size: 13px;
+    line-height: 1.9;
+  }
+  .dialogue .bot  { color: var(--text-dim); }
+  .dialogue .bot::before  { content: '🤖 BotFather: '; color: #888; font-size: 11px; }
+  .dialogue .user { color: var(--accent2); font-weight: 600; }
+  .dialogue .user::before { content: '👤 Tú: '; color: #888; font-size: 11px; font-weight: 400; }
+  .dialogue .resp { color: var(--green); }
+  .dialogue .resp::before { content: '✅ '; }
+
+  /* ── Table ── */
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+    margin: 12px 0 16px;
+  }
+  th {
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    padding: 8px 12px;
+    text-align: left;
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--text-dim);
+    font-weight: 600;
+    letter-spacing: 0.5px;
+  }
+  td {
+    border: 1px solid var(--border);
+    padding: 8px 12px;
+    color: var(--text);
+    vertical-align: top;
+  }
+  td:first-child { font-family: var(--mono); font-size: 12px; color: var(--accent2); white-space: nowrap; }
+  tr:hover td { background: var(--bg2); }
+
+  /* ── Summary box ── */
+  .summary {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 18px 22px;
+    margin-top: 8px;
+  }
+  .summary ol {
+    padding-left: 0;
+    list-style: none;
+    counter-reset: sum;
+  }
+  .summary ol li {
+    counter-increment: sum;
+    padding: 5px 0 5px 32px;
+    position: relative;
+    font-size: 14px;
+    color: var(--text-dim);
+    border-bottom: 1px solid var(--border);
+  }
+  .summary ol li:last-child { border-bottom: none; }
+  .summary ol li::before {
+    content: counter(sum);
+    position: absolute; left: 0;
+    width: 22px; height: 22px;
+    background: var(--accent);
+    color: #fff;
+    border-radius: 50%;
+    font-size: 11px;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    top: 7px;
+    font-family: var(--mono);
+  }
+  .summary ol li strong { color: var(--text); }
+
+  /* ── Footer ── */
+  .page-footer {
+    text-align: center;
+    padding: 24px 0 32px;
+    border-top: 1px solid var(--border);
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--text-dim);
+    margin-top: 20px;
+  }
+  .page-footer a { color: var(--accent); }
+
+  @media print {
+    .copy-btn { display: none; }
+    pre { padding-right: 18px; }
+    .page-header { background: #0062cc !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  }
+  @media (max-width: 600px) {
+    .container { padding: 24px 16px 48px; }
+    .page-header h1 { font-size: 20px; }
+    pre { font-size: 11px; }
+  }
+</style>
+</head>
+<body>
+
+<header class="page-header">
+  <h1>✈️ TELEGRAM BOT</h1>
+  <div class="subtitle">Configuración para DX Monitor</div>
+  <div class="version">Obtener Token · Chat ID · Imagen del bot</div>
+</header>
+
+<div class="container">
+
+  <div class="intro">
+    Esta guía explica cómo crear un <strong>bot de Telegram</strong> para recibir las alertas DX en tu móvil u ordenador.
+    Si aún no tienes cuenta de Telegram, el primer paso explica cómo crearla.
+  </div>
+
+  <!-- Paso 1 -->
+  <div class="section">
+    <div class="section-title"><span class="step-num">1</span> Crear una cuenta de Telegram</div>
+    <div class="info">
+      ℹ Si ya tienes cuenta de Telegram, pasa directamente al <strong>Paso 2</strong>.
+    </div>
+    <p>Descarga la app desde la tienda de tu dispositivo o desde la web oficial:</p>
+    <a class="link-block" href="https://telegram.org" target="_blank">🌐 telegram.org</a>
+    <p>También puedes usar Telegram desde el navegador sin instalar nada:</p>
+    <a class="link-block" href="https://web.telegram.org" target="_blank">🌐 web.telegram.org</a>
+    <ul>
+      <li>Al registrarte solo necesitas un <strong>número de teléfono</strong></li>
+      <li>Introduce el código que recibes por SMS</li>
+      <li>El nombre de usuario (que empieza por <strong>@</strong>) es opcional pero recomendable</li>
+    </ul>
+  </div>
+
+  <!-- Paso 2 -->
+  <div class="section">
+    <div class="section-title"><span class="step-num">2</span> Crear el bot con @BotFather</div>
+    <p>BotFather es el bot oficial de Telegram para gestionar bots. Es el único método oficial.</p>
+    <p>Abre Telegram y busca <strong>@BotFather</strong> en el buscador. Verifica que tiene la marca azul de verificación oficial. Pulsa <strong>Start</strong> o escribe <strong>/start</strong>.</p>
+    <p>Escribe <strong>/newbot</strong> y sigue las instrucciones:</p>
+    <div class="dialogue">
+      <div class="bot">Alright, a new bot. How are we going to call it?</div>
+      <div class="user">Tu_indicativo DX Monitor</div>
+      <div class="bot">Good. Now let's choose a username for your bot. It must end in <code>bot</code>.</div>
+      <div class="user">Tu_indicativo_DXMonitor_bot</div>
+    </div>
+    <p>El nombre puede ser cualquier cosa descriptiva. El username debe ser único en Telegram y terminar en <strong>bot</strong>.</p>
+    <p>BotFather te responderá con el <strong>token</strong>:</p>
+    <div class="dialogue">
+      <div class="resp">Done! Congratulations on your new bot. Use this token to access the HTTP API: <strong>123456789:AABBcc...</strong></div>
+    </div>
+    <div class="warn">
+      ⚠ Guarda el token en un lugar seguro. Es secreto: quien lo tenga controla tu bot.
+    </div>
+  </div>
+
+  <!-- Paso 3 -->
+  <div class="section">
+    <div class="section-title"><span class="step-num">3</span> Obtener tu Chat ID</div>
+    <p>El Chat ID identifica tu conversación personal con el bot. Es donde recibirás todas las alertas DX.</p>
+    <ul>
+      <li>Busca tu bot por su username (<strong>@Tu_indicativo_DXMonitor_bot</strong>) y pulsa <strong>Start</strong></li>
+      <li>Escribe cualquier mensaje al bot desde Telegram</li>
+      <li>Abre la siguiente URL en el navegador, sustituyendo el token:</li>
+    </ul>
+    <div class="code-wrap">
+      <pre>https://api.telegram.org/bot&lt;TU_TOKEN&gt;/getUpdates</pre>
+      <button class="copy-btn" onclick="copyCode(this)">⎘ Copiar</button>
+    </div>
+    <p>Verás un JSON con tu mensaje. El Chat ID está en:</p>
+    <div class="code-wrap">
+      <pre>"chat": { "id": 1045454849, ... }</pre>
+      <button class="copy-btn" onclick="copyCode(this)">⎘ Copiar</button>
+    </div>
+    <p>Ese número es tu <strong>Chat ID personal</strong>. Cópialo.</p>
+  </div>
+
+  <!-- Paso 4 -->
+  <div class="section">
+    <div class="section-title"><span class="step-num">4</span> Configurar en el Dashboard</div>
+    <p>En el dashboard de DX Monitor, sección <strong>Telegram</strong>:</p>
+    <ul>
+      <li><strong>Token bot</strong> → el token que te dio BotFather</li>
+      <li><strong>Chat ID</strong> → el número obtenido en el paso anterior</li>
+      <li><strong>Idioma alertas</strong> → Español o English</li>
+    </ul>
+    <p>Pulsa <strong>Enviar mensaje de prueba</strong> para verificar que llega correctamente.</p>
+    <div class="info">
+      ℹ La URL del dashboard es <strong>http://&lt;IP_DEL_HOST&gt;:8765</strong>
+    </div>
+  </div>
+
+  <!-- Paso 5 -->
+  <div class="section">
+    <div class="section-title"><span class="step-num">5</span> Crear una imagen para el bot</div>
+    <p>BotFather permite asignar una foto de perfil al bot con el comando <strong>/setuserpic</strong>.</p>
+    <p><strong>Recomendaciones de diseño:</strong></p>
+    <ul>
+      <li>Formato cuadrado, mínimo <strong>640×640 px</strong> (Telegram lo redondea en círculo)</li>
+      <li>Fondo oscuro con el indicativo o texto <strong>DX Monitor</strong></li>
+      <li>Icono de antena, ondas de radio o el símbolo de radioafición</li>
+    </ul>
+    <p><strong>Herramientas gratuitas:</strong></p>
+    <ul>
+      <li><a href="https://www.canva.com" target="_blank" style="color:var(--accent)">Canva</a> — plantillas fáciles, exporta PNG directamente</li>
+      <li><a href="https://www.gimp.org" target="_blank" style="color:var(--accent)">GIMP</a> — editor de imagen local, gratuito</li>
+      <li><a href="https://logomakr.com" target="_blank" style="color:var(--accent)">logomakr.com</a> — opción rápida online</li>
+    </ul>
+    <p>Para subir la imagen, escribe en BotFather:</p>
+    <div class="dialogue">
+      <div class="user">/setuserpic</div>
+      <div class="bot">Choose a bot to change profile photo.</div>
+      <div class="user">@Tu_indicativo_DXMonitor_bot</div>
+      <div class="bot">OK, send me a photo now.</div>
+      <div class="user">[adjuntas la imagen]</div>
+    </div>
+  </div>
+
+  <!-- Comandos BotFather -->
+  <div class="section">
+    <div class="section-title">Comandos útiles de BotFather</div>
+    <table>
+      <thead>
+        <tr><th>Comando</th><th>Función</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>/mybots</td><td>Ver y gestionar todos tus bots</td></tr>
+        <tr><td>/setname</td><td>Cambiar el nombre visible del bot</td></tr>
+        <tr><td>/setdescription</td><td>Texto que aparece al abrir el bot por primera vez</td></tr>
+        <tr><td>/setabouttext</td><td>Texto breve en el perfil del bot</td></tr>
+        <tr><td>/setuserpic</td><td>Foto de perfil</td></tr>
+        <tr><td>/deletebot</td><td>Eliminar el bot permanentemente</td></tr>
+        <tr><td>/revoke</td><td>Revocar el token actual y generar uno nuevo</td></tr>
+      </tbody>
+    </table>
+    <div class="warn">
+      ⚠ Usa <strong>/revoke</strong> inmediatamente si crees que tu token ha sido comprometido.
+    </div>
+  </div>
+
+  <!-- Resumen -->
+  <div class="section">
+    <div class="section-title">Resumen rápido</div>
+    <div class="summary">
+      <ol>
+        <li><strong>Cuenta Telegram</strong> → telegram.org o app del móvil</li>
+        <li><strong>@BotFather</strong> → /newbot → guarda el <strong>TOKEN</strong></li>
+        <li>Escribe al bot → abre <strong>/getUpdates</strong> en el navegador → copia el <strong>CHAT_ID</strong></li>
+        <li><strong>Dashboard DX Monitor</strong> → sección Telegram → pega token y chat_id → Test</li>
+        <li><strong>@BotFather</strong> → /setuserpic → sube tu imagen 640×640 px</li>
+      </ol>
+    </div>
+  </div>
+
+  <div class="page-footer">
+    73 de EA3TB 📡 &nbsp;·&nbsp; DX Monitor &nbsp;·&nbsp;
+    <a href="https://hub.docker.com/r/ea3tb/dx-monitor" target="_blank">hub.docker.com/r/ea3tb/dx-monitor</a>
+  </div>
+
+</div>
+
+<script>
+function copyCode(btn) {
+  const pre = btn.previousElementSibling;
+  const text = pre.innerText;
+  navigator.clipboard.writeText(text).then(() => {
+    btn.classList.add('copied');
+    btn.innerHTML = '✓ Copiado';
+    setTimeout(() => { btn.classList.remove('copied'); btn.innerHTML = '⎘ Copiar'; }, 2000);
+  }).catch(() => {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand('copy');
+    document.body.removeChild(ta);
+    btn.classList.add('copied');
+    btn.innerHTML = '✓ Copiado';
+    setTimeout(() => { btn.classList.remove('copied'); btn.innerHTML = '⎘ Copiar'; }, 2000);
+  });
+}
+</script>
+
+</body>
+</html>
