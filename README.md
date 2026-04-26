@@ -4,11 +4,11 @@ DX Cluster monitor with Telegram alerts and web dashboard. Available for **Windo
 
 **Callsign**: EA3TB | **Version**: v1.1 | **Docker Hub**: `ea3tb/dx-monitor:latest`
 
-![DX Monitor Dashboard](https://raw.githubusercontent.com/EA3TB/DX-Monitor/main/screenshots/dashboard.png)
+![DX Monitor Dashboard](screenshots/dashboard.png)
 
 ---
 
-![DX Monitor Alerts](https://raw.githubusercontent.com/EA3TB/DX-Monitor/main/screenshots/alerts.png)
+![DX Monitor Alerts](screenshots/alerts.png)
 
 ---
 
