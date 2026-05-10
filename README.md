@@ -16,6 +16,7 @@ DX Cluster monitor with Telegram alerts and web dashboard. Available for **Windo
 
 | | English | Español |
 |---|---|---|
+| 📖 Full manual | [Manual](https://ea3tb.github.io/DX-Monitor/dx_monitor_manual.html) | [Manual](https://ea3tb.github.io/DX-Monitor/dx_monitor_manual.html) |
 | ✈️ Telegram setup | [Guide](https://ea3tb.github.io/DX-Monitor/dx_monitor_telegram_ENG.html) | [Guía](https://ea3tb.github.io/DX-Monitor/dx_monitor_telegram_SPA.html) |
 | 🍓 Raspberry Pi install | [Guide](https://ea3tb.github.io/DX-Monitor/dx_monitor_raspberry_ENG.html) | [Guía](https://ea3tb.github.io/DX-Monitor/dx_monitor_raspberry_SPA.html) |
 

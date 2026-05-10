@@ -1,0 +1,1257 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DX Monitor — Manual EA3TB</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Barlow:wght@300;400;500;600&family=Barlow+Condensed:wght@600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0d1117;
+    --bg2: #161b22;
+    --bg3: #1c2333;
+    --border: #30363d;
+    --amber: #f0a500;
+    --amber2: #ffc947;
+    --green: #39d353;
+    --green2: #56e86a;
+    --text: #e6edf3;
+    --muted: #8b949e;
+    --red: #f85149;
+    --blue: #58a6ff;
+    --teal: #39c5cf;
+    --radius: 6px;
+    --font-mono: 'Share Tech Mono', monospace;
+    --font-body: 'Barlow', sans-serif;
+    --font-head: 'Barlow Condensed', sans-serif;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font-body);
+    font-size: 15px;
+    line-height: 1.7;
+  }
+
+  /* LANG TOGGLE */
+  #lang-en { display: block; }
+  #lang-es { display: none; }
+  body.es #lang-en { display: none; }
+  body.es #lang-es { display: block; }
+
+  /* HEADER */
+  header {
+    background: var(--bg2);
+    border-bottom: 1px solid var(--border);
+    padding: 0 2rem;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    height: 56px;
+  }
+
+  .logo {
+    font-family: var(--font-mono);
+    font-size: 17px;
+    color: var(--amber);
+    letter-spacing: 0.05em;
+  }
+
+  .logo span {
+    color: var(--green);
+    font-size: 12px;
+    margin-left: 10px;
+    vertical-align: middle;
+    background: #0d2a13;
+    border: 1px solid var(--green);
+    padding: 2px 7px;
+    border-radius: 20px;
+    letter-spacing: 0.1em;
+  }
+
+  .header-right { display: flex; align-items: center; gap: 12px; }
+
+  .lang-btn {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--muted);
+    padding: 4px 14px;
+    border-radius: 20px;
+    cursor: pointer;
+    transition: all 0.2s;
+    letter-spacing: 0.1em;
+  }
+
+  .lang-btn:hover, .lang-btn.active {
+    border-color: var(--amber);
+    color: var(--amber);
+  }
+
+  /* NAV SIDEBAR */
+  .layout {
+    display: grid;
+    grid-template-columns: 220px 1fr;
+    min-height: calc(100vh - 56px);
+  }
+
+  nav {
+    background: var(--bg2);
+    border-right: 1px solid var(--border);
+    padding: 1.5rem 0;
+    position: sticky;
+    top: 56px;
+    height: calc(100vh - 56px);
+    overflow-y: auto;
+  }
+
+  nav a {
+    display: block;
+    padding: 6px 1.5rem;
+    font-size: 13px;
+    color: var(--muted);
+    text-decoration: none;
+    font-family: var(--font-mono);
+    letter-spacing: 0.02em;
+    border-left: 2px solid transparent;
+    transition: all 0.15s;
+  }
+
+  nav a:hover {
+    color: var(--amber);
+    border-left-color: var(--amber);
+    background: rgba(240,165,0,0.05);
+  }
+
+  nav .nav-section {
+    font-size: 10px;
+    letter-spacing: 0.15em;
+    color: var(--muted);
+    padding: 1rem 1.5rem 0.3rem;
+    text-transform: uppercase;
+    font-family: var(--font-head);
+  }
+
+  /* CONTENT */
+  main {
+    padding: 2.5rem 3rem;
+    max-width: 860px;
+  }
+
+  section { margin-bottom: 3.5rem; }
+
+  h1 {
+    font-family: var(--font-head);
+    font-size: 38px;
+    font-weight: 700;
+    color: var(--amber);
+    letter-spacing: 0.02em;
+    line-height: 1.1;
+    margin-bottom: 0.5rem;
+  }
+
+  h2 {
+    font-family: var(--font-head);
+    font-size: 24px;
+    font-weight: 600;
+    color: var(--text);
+    letter-spacing: 0.05em;
+    margin-bottom: 1rem;
+    padding-bottom: 0.4rem;
+    border-bottom: 1px solid var(--border);
+    text-transform: uppercase;
+  }
+
+  h3 {
+    font-family: var(--font-head);
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--amber2);
+    letter-spacing: 0.08em;
+    margin: 1.5rem 0 0.5rem;
+    text-transform: uppercase;
+  }
+
+  p { margin-bottom: 0.8rem; color: var(--text); }
+
+  .lead {
+    font-size: 17px;
+    color: var(--muted);
+    margin-bottom: 1.5rem;
+    line-height: 1.6;
+  }
+
+  /* BADGES */
+  .badge {
+    display: inline-block;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    padding: 2px 8px;
+    border-radius: 20px;
+    letter-spacing: 0.08em;
+    margin-right: 4px;
+  }
+  .badge-amber { background: #2a1f00; border: 1px solid var(--amber); color: var(--amber); }
+  .badge-green { background: #0d2a13; border: 1px solid var(--green); color: var(--green); }
+  .badge-blue  { background: #0d1f33; border: 1px solid var(--blue);  color: var(--blue);  }
+  .badge-red   { background: #2a0d0d; border: 1px solid var(--red);   color: var(--red);   }
+  .badge-teal  { background: #0d2a2a; border: 1px solid var(--teal);  color: var(--teal);  }
+
+  /* FEATURES GRID */
+  .features-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 12px;
+    margin-top: 1rem;
+  }
+
+  .feature-card {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 1rem 1.1rem;
+    transition: border-color 0.2s;
+  }
+
+  .feature-card:hover { border-color: var(--amber); }
+
+  .feature-icon {
+    font-size: 20px;
+    margin-bottom: 0.5rem;
+  }
+
+  .feature-title {
+    font-family: var(--font-head);
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    color: var(--amber2);
+    text-transform: uppercase;
+    margin-bottom: 4px;
+  }
+
+  .feature-desc {
+    font-size: 13px;
+    color: var(--muted);
+    line-height: 1.5;
+  }
+
+  /* ARCH CARDS */
+  .arch-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    margin-top: 1rem;
+  }
+
+  .arch-card {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 1.2rem 1.4rem;
+  }
+
+  .arch-card h4 {
+    font-family: var(--font-head);
+    font-size: 16px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    margin-bottom: 0.8rem;
+  }
+
+  .arch-card ul {
+    list-style: none;
+    padding: 0;
+  }
+
+  .arch-card ul li {
+    font-size: 13px;
+    color: var(--muted);
+    padding: 3px 0;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .arch-card ul li:last-child { border-bottom: none; }
+
+  .arch-card ul li::before {
+    content: '›';
+    color: var(--amber);
+    margin-right: 8px;
+    font-weight: bold;
+  }
+
+  /* CODE BLOCK */
+  pre {
+    background: #010409;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 1.2rem 1.4rem;
+    overflow-x: auto;
+    margin: 1rem 0;
+    font-family: var(--font-mono);
+    font-size: 13px;
+    line-height: 1.6;
+    color: #c9d1d9;
+  }
+
+  code {
+    font-family: var(--font-mono);
+    font-size: 13px;
+    background: #161b22;
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    padding: 1px 6px;
+    color: var(--amber2);
+  }
+
+  pre code {
+    background: none;
+    border: none;
+    padding: 0;
+    color: inherit;
+  }
+
+  .comment { color: #6e7681; }
+  .kw { color: #ff7b72; }
+  .str { color: #a5d6ff; }
+  .val { color: #79c0ff; }
+
+  /* TABLE */
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+    margin: 1rem 0;
+  }
+
+  th {
+    background: var(--bg3);
+    color: var(--amber);
+    font-family: var(--font-head);
+    font-size: 11px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    text-align: left;
+    padding: 8px 12px;
+    border: 1px solid var(--border);
+  }
+
+  td {
+    padding: 7px 12px;
+    border: 1px solid var(--border);
+    color: var(--muted);
+    vertical-align: top;
+  }
+
+  td:first-child {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--text);
+    white-space: nowrap;
+  }
+
+  tr:hover td { background: rgba(255,255,255,0.02); }
+
+  /* ALERT TYPES */
+  .alert-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 10px;
+    margin-top: 1rem;
+  }
+
+  .alert-card {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 0.8rem 1rem;
+  }
+
+  .alert-card .atitle {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--green);
+    margin-bottom: 4px;
+  }
+
+  .alert-card .adesc {
+    font-size: 12px;
+    color: var(--muted);
+    line-height: 1.5;
+  }
+
+  /* LOG DEMO */
+  .log-demo {
+    background: #010409;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 1rem 1.2rem;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    line-height: 1.8;
+    margin: 1rem 0;
+  }
+
+  .log-info  { color: #58a6ff; }
+  .log-warn  { color: var(--amber); }
+  .log-ok    { color: var(--green); }
+  .log-muted { color: var(--muted); }
+  .log-alert { color: var(--amber2); }
+  .log-time  { color: #6e7681; }
+
+  /* THREAD DIAGRAM */
+  .thread-box {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 1.2rem 1.4rem;
+    margin: 1rem 0;
+  }
+
+  .thread-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 8px 0;
+    border-bottom: 1px solid var(--border);
+    font-size: 13px;
+  }
+
+  .thread-row:last-child { border-bottom: none; }
+
+  .thread-label {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--amber);
+    width: 160px;
+    flex-shrink: 0;
+  }
+
+  .thread-desc { color: var(--muted); }
+
+  /* CALLOUT */
+  .callout {
+    background: #161b22;
+    border-left: 3px solid var(--amber);
+    border-radius: 0 var(--radius) var(--radius) 0;
+    padding: 0.8rem 1.1rem;
+    margin: 1rem 0;
+    font-size: 13px;
+    color: var(--muted);
+  }
+
+  .callout.green { border-left-color: var(--green); }
+  .callout.blue  { border-left-color: var(--blue); }
+
+  /* SSE DIAGRAM */
+  .sse-flow {
+    display: flex;
+    align-items: center;
+    gap: 0;
+    margin: 1rem 0;
+    font-size: 12px;
+    font-family: var(--font-mono);
+    flex-wrap: wrap;
+    gap: 4px;
+  }
+
+  .sse-node {
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 6px 14px;
+    color: var(--text);
+    white-space: nowrap;
+  }
+
+  .sse-arrow {
+    color: var(--amber);
+    font-size: 16px;
+    padding: 0 4px;
+  }
+
+  /* FILE TREE */
+  .tree {
+    background: #010409;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 1rem 1.4rem;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    line-height: 1.9;
+    color: var(--muted);
+  }
+
+  .tree .dir { color: var(--amber2); }
+  .tree .file-py { color: var(--green); }
+  .tree .file-html { color: var(--blue); }
+  .tree .file-other { color: var(--muted); }
+  .tree .comment-tree { color: #6e7681; }
+
+  /* FOOTER */
+  footer {
+    border-top: 1px solid var(--border);
+    padding: 1.5rem 3rem;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--muted);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  footer a { color: var(--amber); text-decoration: none; }
+
+  @media (max-width: 768px) {
+    .layout { grid-template-columns: 1fr; }
+    nav { display: none; }
+    main { padding: 1.5rem; }
+    .arch-grid { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">
+    DX MONITOR
+    <span>EA3TB</span>
+  </div>
+  <div class="header-right">
+    <button class="lang-btn active" onclick="setLang('en')" id="btn-en">EN</button>
+    <button class="lang-btn" onclick="setLang('es')" id="btn-es">ES</button>
+  </div>
+</header>
+
+<div class="layout">
+
+  <!-- NAV EN -->
+  <div id="lang-en">
+  <nav>
+    <div class="nav-section">Overview</div>
+    <a href="#what">What is DX Monitor</a>
+    <a href="#features">Features</a>
+    <a href="#arch">Architecture</a>
+    <div class="nav-section">Components</div>
+    <a href="#cluster">DX Cluster</a>
+    <a href="#telegram">Telegram Alerts</a>
+    <a href="#logs">Log Sources</a>
+    <a href="#realtime">Real-time Log & Alerts</a>
+    <div class="nav-section">Setup</div>
+    <a href="#docker">Docker Install</a>
+    <a href="#config">Configuration</a>
+    <a href="#filters">Alert Filters</a>
+    <a href="#files">File Structure</a>
+  </nav>
+  </div>
+
+  <!-- NAV ES -->
+  <div id="lang-es">
+  <nav>
+    <div class="nav-section">Visión general</div>
+    <a href="#what">Qué es DX Monitor</a>
+    <a href="#features">Funcionalidades</a>
+    <a href="#arch">Arquitectura</a>
+    <div class="nav-section">Componentes</div>
+    <a href="#cluster">DX Cluster</a>
+    <a href="#telegram">Alertas Telegram</a>
+    <a href="#logs">Fuentes de log</a>
+    <a href="#realtime">Log y alertas en tiempo real</a>
+    <div class="nav-section">Instalación</div>
+    <a href="#docker">Instalación Docker</a>
+    <a href="#config">Configuración</a>
+    <a href="#filters">Filtros de alerta</a>
+    <a href="#files">Estructura de ficheros</a>
+  </nav>
+  </div>
+
+  <main>
+
+    <!-- ===== WHAT ===== -->
+    <section id="what">
+
+      <!-- EN -->
+      <div id="lang-en">
+        <h1>DX Monitor</h1>
+        <p class="lead">Real-time DX Cluster monitor with intelligent Telegram alerts and a web dashboard. Runs as a Docker container on any NAS or Linux server, or as a standalone Windows executable.</p>
+        <p>DX Monitor connects to any DX Cluster (CC11/VE7CC protocol), cross-references incoming spots against your own logbook, and fires Telegram alerts only for contacts that are relevant to you — new DXCC, new band, new mode, or unconfirmed QSLs. The web dashboard lets you configure everything without touching any file.</p>
+        <div style="margin-top:1rem;">
+          <span class="badge badge-amber">v13 Docker</span>
+          <span class="badge badge-green">Python · Flask</span>
+          <span class="badge badge-blue">Docker Hub ea3tb/dx-monitor</span>
+          <span class="badge badge-teal">Port 8765</span>
+        </div>
+      </div>
+
+      <!-- ES -->
+      <div id="lang-es">
+        <h1>DX Monitor</h1>
+        <p class="lead">Monitor de DX Cluster en tiempo real con alertas Telegram inteligentes y dashboard web. Se ejecuta como contenedor Docker en cualquier NAS o servidor Linux, o como ejecutable standalone para Windows.</p>
+        <p>DX Monitor se conecta a cualquier DX Cluster (protocolo CC11/VE7CC), cruza los spots entrantes con tu propio libro de QSO y lanza alertas Telegram solo para los contactos relevantes: nuevo DXCC, nueva banda, nuevo modo o QSL pendiente. El dashboard web permite configurarlo todo sin tocar ningún fichero.</p>
+        <div style="margin-top:1rem;">
+          <span class="badge badge-amber">v13 Docker</span>
+          <span class="badge badge-green">Python · Flask</span>
+          <span class="badge badge-blue">Docker Hub ea3tb/dx-monitor</span>
+          <span class="badge badge-teal">Puerto 8765</span>
+        </div>
+      </div>
+
+    </section>
+
+    <!-- ===== FEATURES ===== -->
+    <section id="features">
+
+      <div id="lang-en">
+        <h2>Features</h2>
+        <div class="features-grid">
+          <div class="feature-card"><div class="feature-title">Real-time cluster</div><div class="feature-desc">Continuous TCP connection, CC11/VE7CC protocol. Keepalive every 180 s, auto-reconnect on failure.</div></div>
+          <div class="feature-card"><div class="feature-title">Smart alerts</div><div class="feature-desc">Cross-checks spots against your log. Fires only for new DXCC, new band, new mode, unconfirmed QSL.</div></div>
+          <div class="feature-card"><div class="feature-title">Mode inference</div><div class="feature-desc">Detects FT8, FT4, CW, SSB from spot comment and frequency. Falls back to band plan (IARU R1/R2/R3).</div></div>
+          <div class="feature-card"><div class="feature-title">Multi log source</div><div class="feature-desc">HRD XML, Swisslog MDB, Log4OM SQLite, ADIF. Configurable reload interval.</div></div>
+          <div class="feature-card"><div class="feature-title">Telegram bot</div><div class="feature-desc">Bilingual alerts (ES/EN). Azimuth SP/LP, distance from locator. Local or UTC time.</div></div>
+          <div class="feature-card"><div class="feature-title">Web dashboard</div><div class="feature-desc">Dark/light theme, ES/EN language. Full config and filters from the browser. No env vars needed.</div></div>
+          <div class="feature-card"><div class="feature-title">SSE live updates</div><div class="feature-desc">Push from server to browser with zero polling. Alerts and log appear instantly.</div></div>
+          <div class="feature-card"><div class="feature-title">Big CTY auto-update</div><div class="feature-desc">Downloads cty.dat every 24 h from the official source. DXCC database always current.</div></div>
+        </div>
+      </div>
+
+      <div id="lang-es">
+        <h2>Funcionalidades</h2>
+        <div class="features-grid">
+          <div class="feature-card"><div class="feature-title">Cluster en tiempo real</div><div class="feature-desc">Conexión TCP continua, protocolo CC11/VE7CC. Keepalive cada 180 s, reconexión automática.</div></div>
+          <div class="feature-card"><div class="feature-title">Alertas inteligentes</div><div class="feature-desc">Cruza los spots con tu log. Solo dispara para nuevo DXCC, nueva banda, nuevo modo o QSL pendiente.</div></div>
+          <div class="feature-card"><div class="feature-title">Inferencia de modo</div><div class="feature-desc">Detecta FT8, FT4, CW, SSB del comentario y la frecuencia. Recurre al band plan (IARU R1/R2/R3).</div></div>
+          <div class="feature-card"><div class="feature-title">Multi-fuente de log</div><div class="feature-desc">HRD XML, Swisslog MDB, Log4OM SQLite, ADIF. Intervalo de recarga configurable.</div></div>
+          <div class="feature-card"><div class="feature-title">Bot Telegram</div><div class="feature-desc">Alertas bilingües (ES/EN). Azimut SP/LP, distancia desde locator. Hora local o UTC.</div></div>
+          <div class="feature-card"><div class="feature-title">Dashboard web</div><div class="feature-desc">Tema dark/light, idioma ES/EN. Configuración completa desde el navegador. Sin variables de entorno.</div></div>
+          <div class="feature-card"><div class="feature-title">Actualizaciones SSE</div><div class="feature-desc">Push del servidor al navegador sin polling. Alertas y log aparecen al instante.</div></div>
+          <div class="feature-card"><div class="feature-title">Big CTY auto-update</div><div class="feature-desc">Descarga cty.dat cada 24 h desde la fuente oficial. Base de datos DXCC siempre actualizada.</div></div>
+        </div>
+      </div>
+
+    </section>
+
+    <!-- ===== ARCH ===== -->
+    <section id="arch">
+
+      <div id="lang-en">
+        <h2>Architecture</h2>
+        <p>A single Python process runs Flask (web) and background threads (cluster, log reload, CTY update) together in one container. No inter-process communication needed.</p>
+        <div class="thread-box">
+          <div class="thread-row"><div class="thread-label">Main thread</div><div class="thread-desc">Flask HTTP server — port 8765. Serves dashboard, REST API, SSE stream.</div></div>
+          <div class="thread-row"><div class="thread-label">bucle_cluster</div><div class="thread-desc">TCP connection to DX Cluster. Parses spots, applies filters, fires Telegram alerts. Keepalive sh/dx 1 every 180 s.</div></div>
+          <div class="thread-row"><div class="thread-label">hilo_recarga_log</div><div class="thread-desc">Reloads the logbook (XML/MDB/SQLite/ADIF) at the configured interval.</div></div>
+          <div class="thread-row"><div class="thread-label">hilo_actualizar_cty</div><div class="thread-desc">Downloads and parses Big CTY (cty.dat) every 24 hours.</div></div>
+        </div>
+        <div class="arch-grid">
+          <div class="arch-card">
+            <h4 style="color: var(--teal);">Docker (NAS/Linux)</h4>
+            <ul>
+              <li>Image: ea3tb/dx-monitor:latest</li>
+              <li>Single container, port 8765</li>
+              <li>Volume: dx_docker_data</li>
+              <li>Hostfs mounted read-only at /hostfs</li>
+              <li>No env vars — config via dashboard</li>
+              <li>Restart: unless-stopped</li>
+            </ul>
+          </div>
+          <div class="arch-card">
+            <h4 style="color: var(--amber);">Windows (standalone)</h4>
+            <ul>
+              <li>DXMonitor.exe — no install</li>
+              <li>System tray icon, auto-opens browser</li>
+              <li>Same Flask + thread architecture</li>
+              <li>Swisslog MDB: Access Engine 2016</li>
+              <li>Built with PyInstaller</li>
+              <li>Windows 10/11 64-bit</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      <div id="lang-es">
+        <h2>Arquitectura</h2>
+        <p>Un único proceso Python ejecuta Flask (web) y hilos de fondo (cluster, recarga de log, actualización CTY) en el mismo contenedor. Sin comunicación entre procesos.</p>
+        <div class="thread-box">
+          <div class="thread-row"><div class="thread-label">Hilo principal</div><div class="thread-desc">Servidor HTTP Flask — puerto 8765. Sirve el dashboard, API REST y stream SSE.</div></div>
+          <div class="thread-row"><div class="thread-label">bucle_cluster</div><div class="thread-desc">Conexión TCP al DX Cluster. Parsea spots, aplica filtros, dispara alertas Telegram. Keepalive sh/dx 1 cada 180 s.</div></div>
+          <div class="thread-row"><div class="thread-label">hilo_recarga_log</div><div class="thread-desc">Recarga el libro de QSO (XML/MDB/SQLite/ADIF) al intervalo configurado.</div></div>
+          <div class="thread-row"><div class="thread-label">hilo_actualizar_cty</div><div class="thread-desc">Descarga y parsea Big CTY (cty.dat) cada 24 horas.</div></div>
+        </div>
+        <div class="arch-grid">
+          <div class="arch-card">
+            <h4 style="color: var(--teal);">Docker (NAS/Linux)</h4>
+            <ul>
+              <li>Imagen: ea3tb/dx-monitor:latest</li>
+              <li>Contenedor único, puerto 8765</li>
+              <li>Volumen: dx_docker_data</li>
+              <li>Hostfs montado solo lectura en /hostfs</li>
+              <li>Sin variables de entorno</li>
+              <li>Restart: unless-stopped</li>
+            </ul>
+          </div>
+          <div class="arch-card">
+            <h4 style="color: var(--amber);">Windows (standalone)</h4>
+            <ul>
+              <li>DXMonitor.exe — sin instalación</li>
+              <li>Icono en bandeja, abre navegador automáticamente</li>
+              <li>Misma arquitectura Flask + hilos</li>
+              <li>Swisslog MDB: Access Engine 2016</li>
+              <li>Compilado con PyInstaller</li>
+              <li>Windows 10/11 64-bit</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
+    </section>
+
+    <!-- ===== CLUSTER ===== -->
+    <section id="cluster">
+
+      <div id="lang-en">
+        <h2>DX Cluster</h2>
+        <p>DX Monitor speaks the CC11/VE7CC protocol over plain TCP. One persistent connection per session.</p>
+
+        <h3>Connection flow</h3>
+        <div class="sse-flow">
+          <div class="sse-node">TCP connect</div><div class="sse-arrow">→</div>
+          <div class="sse-node">Login callsign</div><div class="sse-arrow">→</div>
+          <div class="sse-node">Password (opt)</div><div class="sse-arrow">→</div>
+          <div class="sse-node">Spot stream</div><div class="sse-arrow">→</div>
+          <div class="sse-node">Keepalive 180 s</div>
+        </div>
+
+        <h3>Auto-connect</h3>
+        <p>If <code>cluster_host</code> and <code>cluster_login</code> are set in <code>config.json</code>, the cluster thread connects automatically on startup. Otherwise it waits for the Connect button on the dashboard.</p>
+
+        <h3>Keepalive & reconnect</h3>
+        <p>Sends <code>sh/dx 1</code> every 180 seconds to prevent the server from closing the connection. On unexpected disconnect, waits 30 seconds and reconnects automatically. Manual disconnect (via dashboard) stops the reconnect loop.</p>
+
+        <h3>Pause/resume</h3>
+        <p>Connect and Disconnect buttons act on a <code>threading.Event</code> (<code>_cluster_paused</code>). The cluster thread respects this flag without restarting the process.</p>
+
+        <h3>Anti-duplicate</h3>
+        <p>Spots for the same (callsign, band, mode) are suppressed within a 10-minute sliding window. This prevents alert floods when multiple stations spot the same DX simultaneously.</p>
+
+        <div class="callout">
+          Default cluster: <code>hfpredictor.cronux.net:7304</code> — any CC11-compatible cluster works.
+        </div>
+      </div>
+
+      <div id="lang-es">
+        <h2>DX Cluster</h2>
+        <p>DX Monitor habla el protocolo CC11/VE7CC sobre TCP plano. Una conexión persistente por sesión.</p>
+
+        <h3>Flujo de conexión</h3>
+        <div class="sse-flow">
+          <div class="sse-node">TCP connect</div><div class="sse-arrow">→</div>
+          <div class="sse-node">Login callsign</div><div class="sse-arrow">→</div>
+          <div class="sse-node">Password (opt)</div><div class="sse-arrow">→</div>
+          <div class="sse-node">Stream de spots</div><div class="sse-arrow">→</div>
+          <div class="sse-node">Keepalive 180 s</div>
+        </div>
+
+        <h3>Auto-conexión</h3>
+        <p>Si <code>cluster_host</code> y <code>cluster_login</code> están en <code>config.json</code>, el hilo del cluster conecta automáticamente al arrancar. Si no, espera al botón Conectar del dashboard.</p>
+
+        <h3>Keepalive y reconexión</h3>
+        <p>Envía <code>sh/dx 1</code> cada 180 segundos para evitar que el servidor cierre la conexión. Ante una desconexión inesperada, espera 30 s y reconecta automáticamente. La desconexión manual (desde el dashboard) detiene el bucle de reconexión.</p>
+
+        <h3>Pausa/reanudación</h3>
+        <p>Los botones Conectar y Desconectar actúan sobre un <code>threading.Event</code> (<code>_cluster_paused</code>). El hilo del cluster respeta este flag sin reiniciar el proceso.</p>
+
+        <h3>Anti-duplicados</h3>
+        <p>Los spots para el mismo (indicativo, banda, modo) se suprimen dentro de una ventana deslizante de 10 minutos. Evita inundaciones de alertas cuando varias estaciones spotean el mismo DX simultáneamente.</p>
+
+        <div class="callout">
+          Cluster por defecto: <code>hfpredictor.cronux.net:7304</code> — funciona cualquier cluster compatible CC11.
+        </div>
+      </div>
+
+    </section>
+
+    <!-- ===== TELEGRAM ===== -->
+    <section id="telegram">
+
+      <div id="lang-en">
+        <h2>Telegram Alerts</h2>
+        <p>DX Monitor sends formatted Telegram messages via the Bot API using your personal bot token and chat ID. All alert parameters are configured from the dashboard — no manual file editing.</p>
+
+        <h3>Alert types</h3>
+        <div class="alert-grid">
+          <div class="alert-card"><div class="atitle">new_country</div><div class="adesc">DXCC entity never worked before. Highest priority alert.</div></div>
+          <div class="alert-card"><div class="atitle">worked_country</div><div class="adesc">DXCC entity worked but QSL not confirmed.</div></div>
+          <div class="alert-card"><div class="atitle">new_band</div><div class="adesc">DXCC entity not worked on this band (any mode).</div></div>
+          <div class="alert-card"><div class="atitle">band_no_qsl</div><div class="adesc">DXCC/band combination worked, QSL pending.</div></div>
+          <div class="alert-card"><div class="atitle">new_mode</div><div class="adesc">DXCC/band not worked in this mode.</div></div>
+          <div class="alert-card"><div class="atitle">mode_no_qsl</div><div class="adesc">Mode combination worked, QSL pending.</div></div>
+        </div>
+
+        <h3>Alert content</h3>
+        <p>Each alert includes: DX callsign and entity, frequency, band, mode, spotter, azimuth Short Path / Long Path (degrees), distance (km), and timestamp in local or UTC time.</p>
+
+        <h3>Mode inference logic</h3>
+        <p>Mode is determined in this order:</p>
+        <ol style="padding-left:1.5rem; font-size:13px; color:var(--muted); line-height:2;">
+          <li>Spot comment explicitly mentions CW / SSB / RTTY / FT8 / FT4 → use that mode</li>
+          <li>No mode in comment + frequency matches FT8 or FT4 nominal (±1 kHz) → infer FT8 / FT4</li>
+          <li>No mode, not FT8/FT4 → infer CW or SSB by band plan. Never RTTY.</li>
+          <li>Frequency in exclusive CW segment → force CW regardless of comment</li>
+        </ol>
+
+        <h3>Language & time</h3>
+        <p>Alert messages are sent in Spanish or English (<code>alert_lang</code>). Timestamps use the configured timezone (40+ grouped zones + manual IANA entry) in local or UTC mode (<code>time_mode</code>).</p>
+
+        <div class="callout green">
+          To get your chat ID: send any message to your bot, then visit<br>
+          <code>https://api.telegram.org/bot&lt;TOKEN&gt;/getUpdates</code>
+        </div>
+      </div>
+
+      <div id="lang-es">
+        <h2>Alertas Telegram</h2>
+        <p>DX Monitor envía mensajes Telegram formateados via Bot API usando tu token de bot personal y tu chat ID. Todos los parámetros se configuran desde el dashboard, sin editar ficheros.</p>
+
+        <h3>Tipos de alerta</h3>
+        <div class="alert-grid">
+          <div class="alert-card"><div class="atitle">pais_nuevo</div><div class="adesc">Entidad DXCC nunca trabajada. Alerta de máxima prioridad.</div></div>
+          <div class="alert-card"><div class="atitle">pais_trabajado</div><div class="adesc">Entidad DXCC trabajada pero QSL no confirmada.</div></div>
+          <div class="alert-card"><div class="atitle">banda_nueva</div><div class="adesc">Entidad DXCC no trabajada en esta banda (ningún modo).</div></div>
+          <div class="alert-card"><div class="atitle">banda_sin_qsl</div><div class="adesc">Combinación DXCC/banda trabajada, QSL pendiente.</div></div>
+          <div class="alert-card"><div class="atitle">modo_nuevo</div><div class="adesc">DXCC/banda no trabajados en este modo.</div></div>
+          <div class="alert-card"><div class="atitle">modo_sin_qsl</div><div class="adesc">Combinación de modo trabajada, QSL pendiente.</div></div>
+        </div>
+
+        <h3>Contenido de la alerta</h3>
+        <p>Cada alerta incluye: indicativo y entidad DX, frecuencia, banda, modo, spotter, azimut vía corta / vía larga (grados), distancia (km) y timestamp en hora local o UTC.</p>
+
+        <h3>Lógica de inferencia de modo</h3>
+        <p>El modo se determina en este orden:</p>
+        <ol style="padding-left:1.5rem; font-size:13px; color:var(--muted); line-height:2;">
+          <li>El comentario del spot menciona explícitamente CW / SSB / RTTY / FT8 / FT4 → se usa ese modo</li>
+          <li>Sin modo en el comentario + frecuencia coincide con nominal FT8 o FT4 (±1 kHz) → se infiere FT8 / FT4</li>
+          <li>Sin modo, no FT8/FT4 → se infiere CW o SSB por band plan. Nunca RTTY.</li>
+          <li>Frecuencia en segmento exclusivo CW → se fuerza CW independientemente del comentario</li>
+        </ol>
+
+        <h3>Idioma y hora</h3>
+        <p>Los mensajes se envían en español o inglés (<code>alert_lang</code>). Los timestamps usan la zona horaria configurada (40+ zonas agrupadas + campo IANA manual) en modo local o UTC (<code>time_mode</code>).</p>
+
+        <div class="callout green">
+          Para obtener tu chat ID: envía cualquier mensaje a tu bot y visita<br>
+          <code>https://api.telegram.org/bot&lt;TOKEN&gt;/getUpdates</code>
+        </div>
+      </div>
+
+    </section>
+
+    <!-- ===== LOGS ===== -->
+    <section id="logs">
+
+      <div id="lang-en">
+        <h2>Log Sources</h2>
+        <p>DX Monitor reads your logbook to know which DXCCs, bands and modes you have already worked. Four formats are supported and selected from the dashboard.</p>
+
+        <table>
+          <tr><th>Format</th><th>Notes</th></tr>
+          <tr><td>HRD XML</td><td>Ham Radio Deluxe — automatic background export. DX Monitor watches a directory and reloads XML files at the configured interval. Path navigable from the dashboard browser.</td></tr>
+          <tr><td>Swisslog MDB</td><td>Microsoft Access database (.mdb). Requires Access Database Engine 2016 on Windows. The app offers automatic installation if missing.</td></tr>
+          <tr><td>Log4OM SQLite</td><td>Log4OM v2 — reads the SQLite database directly. No export needed.</td></tr>
+          <tr><td>ADIF</td><td>Universal format exported by any logging software. Reload on demand or at interval.</td></tr>
+        </table>
+
+        <h3>Reload interval</h3>
+        <p>Configurable in minutes from the dashboard. The log thread wakes at each interval, reads the source, and updates the in-memory DXCC/band/mode database used by the alert engine.</p>
+
+        <h3>Docker path handling</h3>
+        <p>Inside the container, the host filesystem is mounted read-only at <code>/hostfs</code>. The function <code>host_path()</code> transparently converts host paths entered in the dashboard to their <code>/hostfs</code>-prefixed equivalents. The directory browser (📂) navigates <code>/hostfs</code> and displays the real host paths.</p>
+
+        <div class="callout blue">
+          For SMB log files from a Windows PC: mount the share as a Docker volume and point the log path to the mount point.
+        </div>
+      </div>
+
+      <div id="lang-es">
+        <h2>Fuentes de log</h2>
+        <p>DX Monitor lee tu libro de QSO para saber qué DXCCs, bandas y modos ya tienes trabajados. Se soportan cuatro formatos, seleccionables desde el dashboard.</p>
+
+        <table>
+          <tr><th>Formato</th><th>Notas</th></tr>
+          <tr><td>HRD XML</td><td>Ham Radio Deluxe — exportación automática en segundo plano. DX Monitor vigila un directorio y recarga los ficheros XML al intervalo configurado. Ruta navegable desde el explorador del dashboard.</td></tr>
+          <tr><td>Swisslog MDB</td><td>Base de datos Microsoft Access (.mdb). Requiere Access Database Engine 2016 en Windows. La app ofrece instalación automática si falta.</td></tr>
+          <tr><td>Log4OM SQLite</td><td>Log4OM v2 — lee la base de datos SQLite directamente. Sin necesidad de exportar.</td></tr>
+          <tr><td>ADIF</td><td>Formato universal exportado por cualquier programa de log. Recarga bajo demanda o al intervalo configurado.</td></tr>
+        </table>
+
+        <h3>Intervalo de recarga</h3>
+        <p>Configurable en minutos desde el dashboard. El hilo de log se activa en cada intervalo, lee la fuente y actualiza la base de datos en memoria de DXCC/banda/modo que usa el motor de alertas.</p>
+
+        <h3>Paths en Docker</h3>
+        <p>Dentro del contenedor, el filesystem del host se monta en solo lectura en <code>/hostfs</code>. La función <code>host_path()</code> convierte de forma transparente los paths del host introducidos en el dashboard a sus equivalentes prefijados con <code>/hostfs</code>. El explorador de directorios (📂) navega <code>/hostfs</code> y muestra los paths reales del host.</p>
+
+        <div class="callout blue">
+          Para logs por SMB desde un PC Windows: monta el recurso compartido como volumen Docker y apunta el log path al punto de montaje.
+        </div>
+      </div>
+
+    </section>
+
+    <!-- ===== REAL-TIME ===== -->
+    <section id="realtime">
+
+      <div id="lang-en">
+        <h2>Real-time Log &amp; Alerts</h2>
+        <p>The bottom of the dashboard shows two live panels updated by SSE — no page refresh, no polling.</p>
+
+        <h3>How SSE works</h3>
+        <div class="sse-flow">
+          <div class="sse-node">Spot received</div><div class="sse-arrow">→</div>
+          <div class="sse-node">_escribir_status()</div><div class="sse-arrow">→</div>
+          <div class="sse-node">sse_push()</div><div class="sse-arrow">→</div>
+          <div class="sse-node">All SSE clients</div><div class="sse-arrow">→</div>
+          <div class="sse-node">Dashboard updates</div>
+        </div>
+        <p style="margin-top:0.8rem;font-size:13px;color:var(--muted);">No watcher thread. <code>_escribir_status()</code> writes <code>status.json</code> atomically with <code>os.replace</code> and calls <code>sse_push()</code> directly — zero latency between event and browser update. If the connection drops, the dashboard reconnects automatically after 5 seconds.</p>
+
+        <h3>Live DX alerts panel</h3>
+        <p>Each incoming alert that passes all filters appears instantly: callsign, entity, frequency, band, mode, azimuth SP/LP, distance, spotter, and timestamp. Anti-duplicate window (10 min) prevents repeated entries for the same spot.</p>
+
+        <h3>System log panel</h3>
+        <p>Last 40 lines of <code>dx_monitor.log</code>, color-coded by level:</p>
+        <div class="log-demo">
+          <div><span class="log-time">2025-08-14 09:31:02</span> <span class="log-ok">[INFO]</span>  <span class="log-muted">Connected to cluster hfpredictor.cronux.net:7304</span></div>
+          <div><span class="log-time">2025-08-14 09:31:45</span> <span class="log-alert">[ALERT]</span> <span class="log-muted">new_country · 3B8FA · 14074 kHz · FT8 · 160° SP / 340° LP · 9847 km</span></div>
+          <div><span class="log-time">2025-08-14 09:32:11</span> <span class="log-ok">[INFO]</span>  <span class="log-muted">new_band · PY0F · 21074 kHz · FT8</span></div>
+          <div><span class="log-time">2025-08-14 09:35:00</span> <span class="log-warn">[WARN]</span>  <span class="log-muted">Keepalive sent</span></div>
+          <div><span class="log-time">2025-08-14 09:42:17</span> <span class="log-info">[INFO]</span>  <span class="log-muted">CTY updated — 3447 entities loaded</span></div>
+        </div>
+        <p style="font-size:13px;color:var(--muted);">Log lines are translated to the dashboard language (ES/EN), including internal key names like <code>pais_nuevo</code>, <code>modo_sin_qsl</code>, etc. Log timestamps respect the timezone configured in <code>config.json</code>.</p>
+      </div>
+
+      <div id="lang-es">
+        <h2>Log y alertas en tiempo real</h2>
+        <p>La parte inferior del dashboard muestra dos paneles en vivo actualizados por SSE — sin recarga de página, sin polling.</p>
+
+        <h3>Cómo funciona SSE</h3>
+        <div class="sse-flow">
+          <div class="sse-node">Spot recibido</div><div class="sse-arrow">→</div>
+          <div class="sse-node">_escribir_status()</div><div class="sse-arrow">→</div>
+          <div class="sse-node">sse_push()</div><div class="sse-arrow">→</div>
+          <div class="sse-node">Todos los clientes SSE</div><div class="sse-arrow">→</div>
+          <div class="sse-node">Dashboard actualizado</div>
+        </div>
+        <p style="margin-top:0.8rem;font-size:13px;color:var(--muted);">Sin hilo vigilante. <code>_escribir_status()</code> escribe <code>status.json</code> atómicamente con <code>os.replace</code> y llama a <code>sse_push()</code> directamente — latencia cero entre evento y actualización en el navegador. Si se pierde la conexión, el dashboard reconecta automáticamente tras 5 segundos.</p>
+
+        <h3>Panel de alertas DX en vivo</h3>
+        <p>Cada alerta entrante que pasa todos los filtros aparece al instante: indicativo, entidad, frecuencia, banda, modo, azimut SP/LP, distancia, spotter y timestamp. La ventana antiduplicados (10 min) evita entradas repetidas para el mismo spot.</p>
+
+        <h3>Panel de log del sistema</h3>
+        <p>Últimas 40 líneas de <code>dx_monitor.log</code>, coloreadas por nivel:</p>
+        <div class="log-demo">
+          <div><span class="log-time">2025-08-14 09:31:02</span> <span class="log-ok">[INFO]</span>  <span class="log-muted">Conectado al cluster hfpredictor.cronux.net:7304</span></div>
+          <div><span class="log-time">2025-08-14 09:31:45</span> <span class="log-alert">[ALERT]</span> <span class="log-muted">pais_nuevo · 3B8FA · 14074 kHz · FT8 · 160° SP / 340° LP · 9847 km</span></div>
+          <div><span class="log-time">2025-08-14 09:32:11</span> <span class="log-ok">[INFO]</span>  <span class="log-muted">banda_nueva · PY0F · 21074 kHz · FT8</span></div>
+          <div><span class="log-time">2025-08-14 09:35:00</span> <span class="log-warn">[WARN]</span>  <span class="log-muted">Keepalive enviado</span></div>
+          <div><span class="log-time">2025-08-14 09:42:17</span> <span class="log-info">[INFO]</span>  <span class="log-muted">CTY actualizado — 3447 entidades cargadas</span></div>
+        </div>
+        <p style="font-size:13px;color:var(--muted);">Las líneas del log se traducen al idioma del dashboard (ES/EN), incluidas las claves internas como <code>pais_nuevo</code>, <code>modo_sin_qsl</code>, etc. Los timestamps respetan la zona horaria configurada en <code>config.json</code>.</p>
+      </div>
+
+    </section>
+
+    <!-- ===== DOCKER ===== -->
+    <section id="docker">
+
+      <div id="lang-en">
+        <h2>Docker Installation</h2>
+
+        <h3>Quick start</h3>
+        <p>Create a <code>docker-compose.yml</code>:</p>
+        <pre><span class="kw">services</span>:
+  <span class="kw">dxmonitor</span>:
+    <span class="kw">image</span>: <span class="str">ea3tb/dx-monitor:latest</span>
+    <span class="kw">container_name</span>: <span class="str">dx_monitor_docker</span>
+    <span class="kw">restart</span>: <span class="str">unless-stopped</span>
+    <span class="kw">ports</span>:
+      - <span class="str">"8765:8765"</span>
+    <span class="kw">volumes</span>:
+      - <span class="str">/:/hostfs:ro</span>
+      - <span class="str">dx_docker_data:/opt/dx_monitor_docker</span>
+    <span class="kw">networks</span>:
+      - <span class="str">dx_net</span>
+
+<span class="kw">volumes</span>:
+  <span class="kw">dx_docker_data</span>:
+    <span class="kw">driver</span>: <span class="str">local</span>
+
+<span class="kw">networks</span>:
+  <span class="kw">dx_net</span>:
+    <span class="kw">driver</span>: <span class="str">bridge</span></pre>
+
+        <pre><span class="comment"># Deploy</span>
+docker compose up -d
+
+<span class="comment"># Open dashboard</span>
+http://&lt;nas-ip&gt;:8765</pre>
+
+        <h3>Useful commands</h3>
+        <pre><span class="comment"># Real-time logs</span>
+docker logs -f dx_monitor_docker
+
+<span class="comment"># Status</span>
+docker compose ps
+
+<span class="comment"># Stop / restart</span>
+docker compose down
+docker compose up -d
+
+<span class="comment"># Shell access</span>
+docker exec -it dx_monitor_docker bash
+
+<span class="comment"># View active config</span>
+docker exec dx_monitor_docker cat /opt/dx_monitor_docker/config.json</pre>
+
+        <h3>Update to latest image</h3>
+        <pre><span class="comment"># Pull new image and redeploy</span>
+docker compose pull
+docker compose up -d</pre>
+
+        <div class="callout">
+          First run: the volume is empty. <code>config.json</code> is created with empty defaults. Fill in callsign, log path, cluster and Telegram from the dashboard — no file editing needed.
+        </div>
+      </div>
+
+      <div id="lang-es">
+        <h2>Instalación Docker</h2>
+
+        <h3>Inicio rápido</h3>
+        <p>Crea un <code>docker-compose.yml</code>:</p>
+        <pre><span class="kw">services</span>:
+  <span class="kw">dxmonitor</span>:
+    <span class="kw">image</span>: <span class="str">ea3tb/dx-monitor:latest</span>
+    <span class="kw">container_name</span>: <span class="str">dx_monitor_docker</span>
+    <span class="kw">restart</span>: <span class="str">unless-stopped</span>
+    <span class="kw">ports</span>:
+      - <span class="str">"8765:8765"</span>
+    <span class="kw">volumes</span>:
+      - <span class="str">/:/hostfs:ro</span>
+      - <span class="str">dx_docker_data:/opt/dx_monitor_docker</span>
+    <span class="kw">networks</span>:
+      - <span class="str">dx_net</span>
+
+<span class="kw">volumes</span>:
+  <span class="kw">dx_docker_data</span>:
+    <span class="kw">driver</span>: <span class="str">local</span>
+
+<span class="kw">networks</span>:
+  <span class="kw">dx_net</span>:
+    <span class="kw">driver</span>: <span class="str">bridge</span></pre>
+
+        <pre><span class="comment"># Desplegar</span>
+docker compose up -d
+
+<span class="comment"># Abrir dashboard</span>
+http://&lt;ip-del-nas&gt;:8765</pre>
+
+        <h3>Comandos útiles</h3>
+        <pre><span class="comment"># Logs en tiempo real</span>
+docker logs -f dx_monitor_docker
+
+<span class="comment"># Estado</span>
+docker compose ps
+
+<span class="comment"># Parar / reiniciar</span>
+docker compose down
+docker compose up -d
+
+<span class="comment"># Acceso al shell</span>
+docker exec -it dx_monitor_docker bash
+
+<span class="comment"># Ver config activa</span>
+docker exec dx_monitor_docker cat /opt/dx_monitor_docker/config.json</pre>
+
+        <h3>Actualizar a la última imagen</h3>
+        <pre><span class="comment"># Descargar nueva imagen y redesplegar</span>
+docker compose pull
+docker compose up -d</pre>
+
+        <div class="callout">
+          Primera ejecución: el volumen está vacío. <code>config.json</code> se crea con defaults vacíos. Rellena indicativo, ruta del log, cluster y Telegram desde el dashboard — sin editar ficheros.
+        </div>
+      </div>
+
+    </section>
+
+    <!-- ===== CONFIG ===== -->
+    <section id="config">
+
+      <div id="lang-en">
+        <h2>Configuration</h2>
+        <p>All settings are stored in <code>/opt/dx_monitor_docker/config.json</code> and edited from the dashboard. Fields save automatically on blur.</p>
+        <table>
+          <tr><th>Field</th><th>Description</th></tr>
+          <tr><td>callsign</td><td>Your amateur radio callsign</td></tr>
+          <tr><td>locator</td><td>Maidenhead grid locator — auto-calculates lat/lon for azimuth and distance</td></tr>
+          <tr><td>cluster_host</td><td>DX Cluster hostname or IP</td></tr>
+          <tr><td>cluster_port</td><td>TCP port (usually 7300 or 7304)</td></tr>
+          <tr><td>cluster_login</td><td>Login callsign sent to the cluster</td></tr>
+          <tr><td>cluster_password</td><td>Cluster password, hideable with 👁 button</td></tr>
+          <tr><td>telegram_token</td><td>Bot API token, hideable with 👁 button</td></tr>
+          <tr><td>telegram_chat_id</td><td>Destination chat ID</td></tr>
+          <tr><td>alert_lang</td><td>Alert message language: <code>es</code> or <code>en</code></td></tr>
+          <tr><td>timezone</td><td>40+ grouped zones + manual IANA entry (e.g. Europe/Madrid)</td></tr>
+          <tr><td>time_mode</td><td><code>local</code> (per timezone) or <code>utc</code></td></tr>
+          <tr><td>hrd_xml_dir</td><td>Directory containing HRD XML export files</td></tr>
+          <tr><td>hrd_xml_glob</td><td>Glob pattern to match XML files (e.g. <code>*.xml</code>)</td></tr>
+        </table>
+      </div>
+
+      <div id="lang-es">
+        <h2>Configuración</h2>
+        <p>Todos los ajustes se guardan en <code>/opt/dx_monitor_docker/config.json</code> y se editan desde el dashboard. Los campos se guardan automáticamente al perder el foco.</p>
+        <table>
+          <tr><th>Campo</th><th>Descripción</th></tr>
+          <tr><td>callsign</td><td>Tu indicativo de radioaficionado</td></tr>
+          <tr><td>locator</td><td>Locator Maidenhead — calcula automáticamente lat/lon para azimut y distancia</td></tr>
+          <tr><td>cluster_host</td><td>Hostname o IP del DX Cluster</td></tr>
+          <tr><td>cluster_port</td><td>Puerto TCP (habitualmente 7300 o 7304)</td></tr>
+          <tr><td>cluster_login</td><td>Indicativo de login enviado al cluster</td></tr>
+          <tr><td>cluster_password</td><td>Contraseña del cluster, ocultable con el botón 👁</td></tr>
+          <tr><td>telegram_token</td><td>Token de la Bot API, ocultable con el botón 👁</td></tr>
+          <tr><td>telegram_chat_id</td><td>Chat ID de destino</td></tr>
+          <tr><td>alert_lang</td><td>Idioma de las alertas: <code>es</code> o <code>en</code></td></tr>
+          <tr><td>timezone</td><td>40+ zonas agrupadas + campo IANA manual (ej. Europe/Madrid)</td></tr>
+          <tr><td>time_mode</td><td><code>local</code> (según timezone) o <code>utc</code></td></tr>
+          <tr><td>hrd_xml_dir</td><td>Directorio con los ficheros de exportación XML de HRD</td></tr>
+          <tr><td>hrd_xml_glob</td><td>Patrón glob para los ficheros XML (ej. <code>*.xml</code>)</td></tr>
+        </table>
+      </div>
+
+    </section>
+
+    <!-- ===== FILTERS ===== -->
+    <section id="filters">
+
+      <div id="lang-en">
+        <h2>Alert Filters</h2>
+        <p>Stored in <code>flags.json</code>. All toggles are available from the dashboard and take effect immediately without restarting.</p>
+        <table>
+          <tr><th>Filter</th><th>Values</th><th>Description</th></tr>
+          <tr><td>iaru_region</td><td>R1 / R2 / R3</td><td>Band plan used for mode inference and frequency validation</td></tr>
+          <tr><td>bandas_activas</td><td>160m – 23cm</td><td>Only spots on selected bands trigger alerts</td></tr>
+          <tr><td>modos_activos</td><td>CW, SSB, RTTY, FT8, FT4</td><td>Only spots in selected modes trigger alerts</td></tr>
+          <tr><td>pais_nuevo</td><td>on/off</td><td>Alert for new DXCC entity</td></tr>
+          <tr><td>pais_trabajado</td><td>on/off</td><td>Alert for worked DXCC without QSL</td></tr>
+          <tr><td>banda_nueva</td><td>on/off</td><td>Alert for new band on known DXCC</td></tr>
+          <tr><td>banda_sin_qsl</td><td>on/off</td><td>Alert for band worked, QSL pending</td></tr>
+          <tr><td>modo_nuevo</td><td>on/off</td><td>Alert for new mode</td></tr>
+          <tr><td>modo_sin_qsl</td><td>on/off</td><td>Alert for mode worked, QSL pending</td></tr>
+        </table>
+      </div>
+
+      <div id="lang-es">
+        <h2>Filtros de alerta</h2>
+        <p>Guardados en <code>flags.json</code>. Todos los toggles están disponibles desde el dashboard y surten efecto inmediatamente sin reiniciar.</p>
+        <table>
+          <tr><th>Filtro</th><th>Valores</th><th>Descripción</th></tr>
+          <tr><td>iaru_region</td><td>R1 / R2 / R3</td><td>Band plan usado para inferencia de modo y validación de frecuencia</td></tr>
+          <tr><td>bandas_activas</td><td>160m – 23cm</td><td>Solo los spots en las bandas seleccionadas generan alertas</td></tr>
+          <tr><td>modos_activos</td><td>CW, SSB, RTTY, FT8, FT4</td><td>Solo los spots en los modos seleccionados generan alertas</td></tr>
+          <tr><td>pais_nuevo</td><td>on/off</td><td>Alerta para nueva entidad DXCC</td></tr>
+          <tr><td>pais_trabajado</td><td>on/off</td><td>Alerta para DXCC trabajado sin QSL</td></tr>
+          <tr><td>banda_nueva</td><td>on/off</td><td>Alerta para nueva banda en DXCC conocido</td></tr>
+          <tr><td>banda_sin_qsl</td><td>on/off</td><td>Alerta para banda trabajada con QSL pendiente</td></tr>
+          <tr><td>modo_nuevo</td><td>on/off</td><td>Alerta para nuevo modo</td></tr>
+          <tr><td>modo_sin_qsl</td><td>on/off</td><td>Alerta para modo trabajado con QSL pendiente</td></tr>
+        </table>
+      </div>
+
+    </section>
+
+    <!-- ===== FILES ===== -->
+    <section id="files">
+
+      <div id="lang-en">
+        <h2>File Structure</h2>
+        <div class="tree">
+<span class="dir">/opt/dev_dx_monitor_docker/</span>
+├── docker-compose.yml          <span class="comment-tree"># end-user compose (Hub image)</span>
+├── README.md
+└── <span class="dir">app/</span>
+    ├── Dockerfile
+    ├── requirements.txt         <span class="comment-tree"># flask, requests</span>
+    ├── <span class="file-py">main.py</span>                  <span class="comment-tree"># single process v13</span>
+    ├── <span class="file-py">band_plans.py</span>            <span class="comment-tree"># IARU R1/R2/R3 band plans</span>
+    ├── <span class="file-py">log_readers.py</span>           <span class="comment-tree"># HRD/MDB/SQLite/ADIF readers</span>
+    └── <span class="dir">templates/</span>
+        └── <span class="file-html">dashboard.html</span>       <span class="comment-tree"># ES/EN dark/light dashboard</span>
+
+<span class="comment-tree"># Persistent data (Docker volume dx_docker_data)</span>
+<span class="dir">/opt/dx_monitor_docker/</span>
+├── config.json                  <span class="comment-tree"># all user settings</span>
+├── flags.json                   <span class="comment-tree"># alert filters</span>
+├── status.json                  <span class="comment-tree"># current state (atomic write)</span>
+├── dx_monitor.log               <span class="comment-tree"># application log</span>
+└── cty.dat                      <span class="comment-tree"># Big CTY database</span>
+        </div>
+      </div>
+
+      <div id="lang-es">
+        <h2>Estructura de ficheros</h2>
+        <div class="tree">
+<span class="dir">/opt/dev_dx_monitor_docker/</span>
+├── docker-compose.yml          <span class="comment-tree"># compose usuario final (imagen Hub)</span>
+├── README.md
+└── <span class="dir">app/</span>
+    ├── Dockerfile
+    ├── requirements.txt         <span class="comment-tree"># flask, requests</span>
+    ├── <span class="file-py">main.py</span>                  <span class="comment-tree"># proceso único v13</span>
+    ├── <span class="file-py">band_plans.py</span>            <span class="comment-tree"># planes IARU R1/R2/R3</span>
+    ├── <span class="file-py">log_readers.py</span>           <span class="comment-tree"># lectores HRD/MDB/SQLite/ADIF</span>
+    └── <span class="dir">templates/</span>
+        └── <span class="file-html">dashboard.html</span>       <span class="comment-tree"># dashboard ES/EN dark/light</span>
+
+<span class="comment-tree"># Datos persistentes (volumen Docker dx_docker_data)</span>
+<span class="dir">/opt/dx_monitor_docker/</span>
+├── config.json                  <span class="comment-tree"># toda la configuración del usuario</span>
+├── flags.json                   <span class="comment-tree"># filtros de alerta</span>
+├── status.json                  <span class="comment-tree"># estado actual (escritura atómica)</span>
+├── dx_monitor.log               <span class="comment-tree"># log de la aplicación</span>
+└── cty.dat                      <span class="comment-tree"># base de datos Big CTY</span>
+        </div>
+      </div>
+
+    </section>
+
+  </main>
+</div>
+
+<footer>
+  <div>DX Monitor · EA3TB · <a href="https://hub.docker.com/r/ea3tb/dx-monitor" target="_blank">Docker Hub</a> · <a href="https://github.com/EA3TB/DX-Monitor" target="_blank">GitHub</a></div>
+  <div style="color: var(--amber);">73 de EA3TB</div>
+</footer>
+
+<script>
+  function setLang(lang) {
+    document.body.classList.toggle('es', lang === 'es');
+    document.getElementById('btn-en').classList.toggle('active', lang === 'en');
+    document.getElementById('btn-es').classList.toggle('active', lang === 'es');
+    localStorage.setItem('dx-manual-lang', lang);
+  }
+
+  const saved = localStorage.getItem('dx-manual-lang');
+  if (saved === 'es') setLang('es');
+</script>
+
+</body>
+</html>
