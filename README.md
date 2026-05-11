@@ -2,7 +2,7 @@
 
 DX Cluster monitor with Telegram alerts and web dashboard. Available for **Windows** (standalone `.exe`) and **Docker** (NAS/Linux).
 
-**Callsign**: EA3TB | **Version**: v1.1 | **Docker Hub**: `ea3tb/dx-monitor:latest`
+**Callsign**: EA3TB | **Version**: v1.2 | **Docker Hub**: `ea3tb/dx-monitor:latest`
 
 ![DX Monitor Dashboard](screenshots/dashboard.png)
 
