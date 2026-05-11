@@ -38,6 +38,7 @@ DX Cluster monitor with Telegram alerts and web dashboard. Available for **Windo
 - Configurable log refresh interval
 - SSE real-time alerts in dashboard (no polling)
 - Bilingual alert messages (ES/EN), local/UTC time
+- Estimated HF propagation scoring for the spot path (QTH → DX), calculated in real time using current solar flux index (SFI) and geomagnetic activity (Kp) fetched from NOAA and HamQSL. Scores reflect the likelihood of propagation on the spot's exact frequency via short path (SP) and long path (LP).
 
 ---
 
