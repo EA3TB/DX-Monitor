@@ -216,6 +216,15 @@ def _leer_log_tail(n=40):
         return [l.rstrip() for l in lines[-n:]]
     except: return []
 
+def _actualizar_log_tail():
+    with _status_lock: _status["log_tail"] = _leer_log_tail()
+    tmp = STATUS_PATH + ".tmp"
+    try:
+        with _status_lock: data = dict(_status)
+        with open(tmp,"w") as f: json.dump(data, f, ensure_ascii=False, default=str)
+        os.replace(tmp, STATUS_PATH)
+    except Exception as e: log.warning("Error actualizando log_tail: %s", e)
+
 # ── Azimut / distancia ────────────────────────────────────────────────────────
 def calcular_azimut_distancia(lat1, lon1, lat2, lon2):
     R = 6371.0
@@ -671,6 +680,7 @@ def procesar_linea(linea):
 
     tipo, icono = clasificar_spot(dxcc_num, banda, modo, flags)
     log.info("SPOT %s [%d] %s %s/%s -> %s", call, dxcc_num, nombre, banda, modo, tipo or "YA_CONFIRMADO")
+    _actualizar_log_tail()
     if not tipo: return
 
     with _lock_alertas: _alertas_enviadas.add((call, banda, modo, ahora))
@@ -782,7 +792,7 @@ def bucle_cluster():
                 _status["cluster_host"] = "%s:%d" % (cfg["cluster_host"], cfg["cluster_port"])
             _escribir_status()
             time.sleep(1)
-            for vcmd in [b"set/ve7cc\r\n", b"set/page 9999\r\n", b"unset/echo\r\n"]:
+            for vcmd in [b"set/ve7cc\r\n", b"set/page 9999\r\n", b"unset/echo\r\n", b"set/ft8\r\n", b"set/skimmer\r\n"]:
                 s.sendall(vcmd); time.sleep(0.5)
             time.sleep(1); s.settimeout(2)
             try:
