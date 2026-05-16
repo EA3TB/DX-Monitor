@@ -485,12 +485,96 @@ def _construir_pfx_a_dxcc_desde_cty():
     log.info("Prefix->DXCC table built from cty.dat: %d prefixes.", len(pfx_map))
 
 # ── Cluster ───────────────────────────────────────────────────────────────────
-def extraer_propagacion(c):
-    sp = re.search(r"\[SP:(\d+)",c); lp = re.search(r"LP:(\d+)",c)
-    r = {}
-    if sp: r["sp"] = int(sp.group(1))
-    if lp: r["lp"] = int(lp.group(1))
-    return r
+# ── Propagación calculada ─────────────────────────────────────────────────────
+_sw_cache = {"kp": 2.0, "sfi": 120.0, "ts": 0.0, "fail": False}
+_sw_lock  = threading.Lock()
+_SW_TTL   = 900  # 15 min
+
+def _fetch_space_weather():
+    """Actualiza caché Kp+SFI si ha expirado. Síncrono con requests."""
+    with _sw_lock:
+        if time.time() - _sw_cache["ts"] < _SW_TTL:
+            return
+    kp = 2.0; sfi = 120.0; fail = False
+    try:
+        r = requests.get(
+            "https://services.swpc.noaa.gov/json/planetary_k_index_1m.json",
+            timeout=8)
+        if r.status_code == 200:
+            data = r.json()
+            if data: kp = float(data[-1].get("kp_index", 2.0))
+    except Exception as e:
+        log.warning("Space weather Kp fetch failed: %s", e); fail = True
+    try:
+        r2 = requests.get("https://www.hamqsl.com/solarxml.php", timeout=8)
+        if r2.status_code == 200:
+            import xml.etree.ElementTree as ET2
+            root2 = ET2.fromstring(r2.text)
+            el = root2.find(".//solarflux")
+            if el is not None and el.text:
+                sfi = float(el.text)
+    except Exception as e:
+        log.warning("Space weather SFI fetch failed: %s", e); fail = True
+    with _sw_lock:
+        _sw_cache["kp"] = kp; _sw_cache["sfi"] = sfi
+        _sw_cache["ts"] = time.time(); _sw_cache["fail"] = fail
+
+def calcular_propagacion(lat1, lon1, lat2, lon2, freq_mhz):
+    """Calcula scores de propagación SP y LP para el path QTH→DX en la frecuencia del spot."""
+    _fetch_space_weather()
+    with _sw_lock:
+        kp = _sw_cache["kp"]; sfi = _sw_cache["sfi"]; fail = _sw_cache["fail"]
+
+    now_utc   = datetime.datetime.now(datetime.timezone.utc)
+    hour_utc  = now_utc.hour + now_utc.minute / 60.0
+    R = 6371.0
+    φ1, φ2 = math.radians(lat1), math.radians(lat2)
+    Δφ = math.radians(lat2 - lat1); Δλ = math.radians(lon2 - lon1)
+    a  = math.sin(Δφ/2)**2 + math.cos(φ1)*math.cos(φ2)*math.sin(Δλ/2)**2
+    dist_sp = R * 2 * math.atan2(math.sqrt(a), math.sqrt(1-a))
+    dist_lp = 40075 - dist_sp
+
+    def _score_path(dist_km, mid_lat, mid_lon):
+        solar_hour = (hour_utc + mid_lon / 15.0) % 24
+        foF2 = max(2.0, (sfi - 65) / 10.0 + 4.0)
+        if dist_km < 1000:      m_factor = 2.0
+        elif dist_km < 3000:    m_factor = 3.0
+        elif dist_km < 7000:    m_factor = 3.8
+        else:                   m_factor = 4.5
+        muf = foF2 * m_factor
+        angle = math.pi * (solar_hour - 14.0) / 12.0
+        muf  *= 0.95 + 0.35 * math.cos(angle)
+        if kp <= 2:   geo = 1.0
+        elif kp <= 4: geo = 0.85
+        elif kp <= 6: geo = 0.60
+        else:         geo = 0.35
+        if abs(mid_lat) > 60: geo *= 0.7
+        night_angle = math.pi * (solar_hour - 2.0) / 12.0
+        night_factor = max(0.0, -math.cos(night_angle))
+        ratio = freq_mhz / muf if muf > 0 else 1.0
+        if ratio > 1.1:
+            base = max(0, int((1.1 - ratio) * 200))
+        elif ratio > 0.85:
+            base = min(95, 85 + int((1.0 - abs(ratio - 0.95) * 5) * 10))
+        elif ratio > 0.5:
+            base = 40 + int(ratio * 60)
+        else:
+            base = 60 if dist_km < 1500 else max(5, int(ratio * 80))
+        if freq_mhz < 7 and dist_km > 5000:
+            base = int(base * 0.6)
+        if freq_mhz <= 7 and night_factor > 0:
+            base = min(95, int(base * (1.0 + 0.35 * night_factor)))
+        return max(0, min(99, int(base * geo)))
+
+    mid_lat_sp = (lat1 + lat2) / 2
+    mid_lon_sp = (lon1 + lon2) / 2
+    mid_lat_lp = -mid_lat_sp
+    mid_lon_lp = mid_lon_sp + 180
+    if mid_lon_lp > 180: mid_lon_lp -= 360
+
+    sp = _score_path(dist_sp, mid_lat_sp, mid_lon_sp)
+    lp = _score_path(dist_lp, mid_lat_lp, mid_lon_lp)
+    return {"sp": sp, "lp": lp, "fail": fail}
 
 def limpiar_comment(c):
     c = re.sub(r"\[SP:\d+(?:,LP:\d+)?\]","",c)
@@ -551,7 +635,7 @@ def procesar_linea(linea):
     banda = freq_khz_to_band(freq_khz, region)
     if not banda or banda not in bandas_activas: return
 
-    prop = extraer_propagacion(comment); clean = limpiar_comment(comment)
+    clean = limpiar_comment(comment)
     modo = normalizar_modo(clean)
     modo_explicito = modo in ["CW","SSB","RTTY","FT8","FT4"]
 
@@ -597,6 +681,7 @@ def procesar_linea(linea):
         lat, lon = maidenhead_to_latlon(cfg.get("locator",""))
         if lat: qth_lat, qth_lon = lat, lon
     az_sp, az_lp, dist = calcular_azimut_distancia(qth_lat, qth_lon, dx_lat, dx_lon)
+    prop = calcular_propagacion(qth_lat, qth_lon, dx_lat, dx_lon, freq)
     prop_str = formatear_propagacion(prop)
 
     time_mode = cfg.get("time_mode","local")
@@ -630,6 +715,8 @@ def procesar_linea(linea):
 
 def formatear_propagacion(prop):
     if not prop: return ""
+    if prop.get("fail"):
+        return "SP: Fail | LP: Fail"
     p = []
     if "sp" in prop: p.append("SP %d%%" % prop["sp"])
     if "lp" in prop: p.append("LP %d%%" % prop["lp"])
@@ -682,9 +769,13 @@ def bucle_cluster():
             while "login:" not in buf.lower() and "call:" not in buf.lower():
                 buf += s.recv(1024).decode("utf-8",errors="ignore")
             s.sendall((cfg["cluster_login"]+"\r\n").encode()); buf = ""
+            t_pwd = time.time()
             while "password:" not in buf.lower():
-                buf += s.recv(1024).decode("utf-8",errors="ignore")
-            s.sendall((cfg["cluster_password"]+"\r\n").encode())
+                if time.time() - t_pwd > 5: break
+                try: buf += s.recv(1024).decode("utf-8",errors="ignore")
+                except socket.timeout: break
+            if "password:" in buf.lower():
+                s.sendall((cfg["cluster_password"]+"\r\n").encode())
             log.info("Autenticado. Escuchando spots en tiempo real...")
             with _status_lock:
                 _status["cluster_connected"] = True
