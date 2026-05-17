@@ -734,7 +734,7 @@ async function openFileModal(){
   const saved = document.getElementById("cfg-log-path").value.trim();
   const lt = document.getElementById("cfg-log-type");
   const logType = lt ? lt.value : "adif";
-  const initPath = saved || "drives";
+  const initPath = saved ? (saved.startsWith("/hostfs") ? saved : "/hostfs" + saved) : "/hostfs";
   _fileMode = true;
   _fileExt  = logType === "swisslog_mdb" ? ".mdb" :
               logType === "log4om_sqlite" ? [".sqlite",".db"] :
@@ -806,7 +806,7 @@ let _fileExt  = null;   // índice → path real (puede contener cualquier cará
 
 async function openDirModal(){
   const saved = document.getElementById("cfg-xml-dir").value.trim();
-  const initPath = saved || "drives";
+  const initPath = saved ? (saved.startsWith("/hostfs") ? saved : "/hostfs" + saved) : "/hostfs";
   document.getElementById("dir-modal").classList.add("open");
   document.getElementById("btn-select-dir").disabled = !saved;
   if(saved) _dirSelectedPath = saved;
