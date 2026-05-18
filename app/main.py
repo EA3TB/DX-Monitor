@@ -38,6 +38,7 @@ FLAGS_DEFAULT = {
     "pais_nuevo":True,"pais_trabajado":True,"banda_nueva":True,"banda_sin_qsl":False,
     "modo_nuevo":True,"modo_sin_qsl":False,
     "bandas_activas":ALL_BANDS[:],"modos_activos":ALL_MODES[:],"iaru_region":1,
+    "prop_min":0,
 }
 
 # ── Logging ───────────────────────────────────────────────────────────────────
@@ -704,6 +705,12 @@ def procesar_linea(linea):
         if lat: qth_lat, qth_lon = lat, lon
     az_sp, az_lp, dist = calcular_azimut_distancia(qth_lat, qth_lon, dx_lat, dx_lon)
     prop = calcular_propagacion(qth_lat, qth_lon, dx_lat, dx_lon, freq)
+    prop_min = int(flags.get("prop_min", 0))
+    if prop_min > 0:
+        prop_max = max(prop.get("sp", 0), prop.get("lp", 0))
+        if prop_max < prop_min:
+            log.info("SPOT %s descartado por propagación: max(SP,LP)=%d%% < %d%%", call, prop_max, prop_min)
+            return
     prop_str = formatear_propagacion(prop)
 
     time_mode = cfg.get("time_mode","local")
@@ -766,6 +773,11 @@ def enviar_telegram(msg, cfg):
     except requests.RequestException as e: log.error("Error Telegram: %s", e)
 
 # ── Hilos monitor ─────────────────────────────────────────────────────────────
+def hilo_space_weather():
+    while True:
+        _fetch_space_weather()
+        time.sleep(900)
+
 def hilo_recarga_log():
     while True:
         try:
@@ -1030,6 +1042,7 @@ def main():
     # Hilos del monitor
     threading.Thread(target=hilo_recarga_log,    daemon=True).start()
     threading.Thread(target=hilo_actualizar_cty, daemon=True).start()
+    threading.Thread(target=hilo_space_weather,  daemon=True).start()
 
     # Autoconectar si hay config guardada, si no esperar
     if not cfg.get("cluster_host") or not cfg.get("cluster_login"):
