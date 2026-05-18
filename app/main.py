@@ -722,7 +722,10 @@ def procesar_linea(linea):
     if clean:    msg += "\n📝 %s" % clean
     if prop_str: msg += "\n📶 %s: %s" % (tg_label("propagacion",lang), prop_str)
 
-    now_dt = datetime.datetime.now()
+    try:
+        now_dt = datetime.datetime.now(zoneinfo.ZoneInfo(cfg.get("timezone","Europe/Madrid")))
+    except Exception:
+        now_dt = datetime.datetime.now(datetime.timezone.utc)
     now_str = now_dt.strftime("%H:%M:%S")
     now_date = now_dt.strftime("%d/%m/%Y")
     entry = {"ts":now_str,"call":call,"dxcc":nombre,"freq":"%.3f"%freq,
