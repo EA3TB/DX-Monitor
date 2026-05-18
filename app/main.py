@@ -366,6 +366,18 @@ def call_a_dxcc(call):
                             ml2 = n; mn = nk; mnom = ncty; mlat = lcty; mlon = locty; break
                 break
     if not mn: return 0,"",0.0,0.0
+    # Si la entidad resuelta es deleted, usar cty.dat puro como fallback
+    if "[deleted]" in mnom.lower():
+        for c in candidatos:
+            for n in range(len(c),0,-1):
+                pfx = c[:n]
+                if pfx in _pfx_cty:
+                    ncty,lcty,locty = _pfx_cty[pfx]
+                    if "[deleted]" not in ncty.lower():
+                        for k,(nk,nomk) in _pfx_a_dxcc.items():
+                            if nomk.lower()[:8] == ncty.lower()[:8]:
+                                mn = nk; mnom = ncty; mlat = lcty; mlon = locty; break
+                    break
     if mlat == 0.0 and mlon == 0.0: _,mlat,mlon = coords_por_call(call)
     return mn, mnom, mlat, mlon
 

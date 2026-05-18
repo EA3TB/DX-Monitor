@@ -365,6 +365,15 @@ def _leer_log_tail(n=40):
         return [l.rstrip() for l in lines[-n:]]
     except: return []
 
+def _actualizar_log_tail():
+    with _status_lock: _status["log_tail"] = _leer_log_tail()
+    tmp = STATUS_PATH + ".tmp"
+    try:
+        with _status_lock: data = dict(_status)
+        with open(tmp,"w") as f: json.dump(data, f, ensure_ascii=False, default=str)
+        os.replace(tmp, STATUS_PATH)
+    except Exception as e: log.warning("Error actualizando log_tail: %s", e)
+
 # ── Azimut / distancia ────────────────────────────────────────────────────────
 def calcular_azimut_distancia(lat1, lon1, lat2, lon2):
     R = 6371.0
@@ -506,6 +515,18 @@ def call_a_dxcc(call):
                             ml2 = n; mn = nk; mnom = ncty; mlat = lcty; mlon = locty; break
                 break
     if not mn: return 0,"",0.0,0.0
+    # Si la entidad resuelta es deleted, usar cty.dat puro como fallback
+    if "[deleted]" in mnom.lower():
+        for c in candidatos:
+            for n in range(len(c),0,-1):
+                pfx = c[:n]
+                if pfx in _pfx_cty:
+                    ncty,lcty,locty = _pfx_cty[pfx]
+                    if "[deleted]" not in ncty.lower():
+                        for k,(nk,nomk) in _pfx_a_dxcc.items():
+                            if nomk.lower()[:8] == ncty.lower()[:8]:
+                                mn = nk; mnom = ncty; mlat = lcty; mlon = locty; break
+                    break
     if mlat == 0.0 and mlon == 0.0: _,mlat,mlon = coords_por_call(call)
     return mn, mnom, mlat, mlon
 
@@ -742,6 +763,7 @@ def procesar_linea(linea, solo_registrar=False):
 
     tipo, icono = clasificar_spot(dxcc_num, banda, modo, flags)
     log.info(_t("spot_info"), call, dxcc_num, nombre, banda, modo, tipo or "ALREADY_CONFIRMED")
+    _actualizar_log_tail()
     if not tipo: return
 
     with _lock_alertas: _alertas_enviadas.add((call, banda, modo, ahora))
@@ -850,16 +872,20 @@ def bucle_cluster():
             while "login:" not in buf.lower() and "call:" not in buf.lower():
                 buf += s.recv(1024).decode("utf-8",errors="ignore")
             s.sendall((cfg["cluster_login"]+"\r\n").encode()); buf = ""
+            t_pwd = time.time()
             while "password:" not in buf.lower():
-                buf += s.recv(1024).decode("utf-8",errors="ignore")
-            s.sendall((cfg["cluster_password"]+"\r\n").encode())
+                if time.time() - t_pwd > 5: break
+                try: buf += s.recv(1024).decode("utf-8",errors="ignore")
+                except socket.timeout: break
+            if "password:" in buf.lower():
+                s.sendall((cfg["cluster_password"]+"\r\n").encode())
             log.info(_t("cluster_auth"))
             with _status_lock:
                 _status["cluster_connected"] = True
                 _status["cluster_host"] = "%s:%d" % (cfg["cluster_host"], cfg["cluster_port"])
             _escribir_status()
             time.sleep(1)
-            for vcmd in [b"set/ve7cc\r\n", b"set/page 9999\r\n", b"unset/echo\r\n"]:
+            for vcmd in [b"set/ve7cc\r\n", b"set/page 9999\r\n", b"unset/echo\r\n", b"set/ft8\r\n", b"set/skimmer\r\n"]:
                 s.sendall(vcmd); time.sleep(0.5)
             time.sleep(1); s.settimeout(2)
             try:
