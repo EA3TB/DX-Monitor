@@ -133,6 +133,14 @@ header{background:var(--bg2);border-bottom:2px solid var(--border);padding:0 20p
 .atype-row{display:flex;align-items:center;justify-content:space-between;padding:4px 8px;border-radius:3px;background:var(--bg3);border:1px solid var(--border)}
 .atype-label{font-size:11px;color:var(--text-hi);font-weight:600}
 .atype-label small{display:block;font-size:9px;color:var(--text-label);font-weight:400;margin-top:1px}
+.prop-slider-wrap{padding:8px 8px 6px;border-top:1px solid var(--border);margin-top:4px}
+.prop-slider-row{display:flex;align-items:center;gap:8px;margin-bottom:4px}
+.prop-slider-label{font-size:10px;color:var(--text-dim);letter-spacing:1px;text-transform:uppercase;white-space:nowrap}
+.prop-slider-val{font-family:var(--mono);font-size:12px;min-width:42px;text-align:right}
+.prop-track{flex:1;height:6px;border-radius:3px;background:var(--border);position:relative;cursor:pointer;user-select:none}
+.prop-fill{height:100%;border-radius:3px;background:var(--accent);pointer-events:none}
+.prop-thumb{position:absolute;top:50%;width:16px;height:16px;border-radius:50%;background:var(--accent);border:2px solid var(--bg2);transform:translate(-50%,-50%);pointer-events:none}
+.prop-hint{font-size:9px;color:var(--text-dim);letter-spacing:0.3px}
 .toggle{position:relative;display:inline-block;width:36px;height:18px;flex-shrink:0}
 .toggle input{opacity:0;width:0;height:0}
 .toggle-slider{position:absolute;inset:0;background:var(--border);border-radius:20px;cursor:pointer;transition:background .2s}
@@ -412,6 +420,9 @@ es:{
   f_banda_sin_qsl:"Banda sin QSL",f_banda_sin_qsl_d:"Banda trabajada, QSL pendiente",
   f_modo_nuevo:"Modo nuevo",f_modo_nuevo_d:"DXCC/banda en modo no trabajado",
   f_modo_sin_qsl:"Modo sin QSL",f_modo_sin_qsl_d:"Modo trabajado, QSL pendiente",
+  f_prop_min:"Propagación mín.",f_prop_off:"sin filtro",
+  f_prop_hint_off:"Sin filtro de propagación activo",
+  f_prop_hint_on:"Spots con max(SP,LP) < {v}% descartados",
   t_pais_nuevo:"PAÍS NUEVO",t_pais_trabajado:"PAÍS TRABAJADO",
   t_banda_nueva:"BANDA NUEVA",t_banda_sin_qsl:"BANDA SIN QSL",
   t_modo_nuevo:"MODO NUEVO",t_modo_sin_qsl:"MODO SIN QSL",
@@ -452,6 +463,9 @@ en:{
   f_banda_sin_qsl:"Band no QSL",f_banda_sin_qsl_d:"Band worked, QSL pending",
   f_modo_nuevo:"New mode",f_modo_nuevo_d:"DXCC/band on unworked mode",
   f_modo_sin_qsl:"Mode no QSL",f_modo_sin_qsl_d:"Mode worked, QSL pending",
+  f_prop_min:"Min. propagation",f_prop_off:"no filter",
+  f_prop_hint_off:"No propagation filter active",
+  f_prop_hint_on:"Spots with max(SP,LP) < {v}% discarded",
   t_pais_nuevo:"NEW COUNTRY",t_pais_trabajado:"WORKED COUNTRY",
   t_banda_nueva:"NEW BAND",t_banda_sin_qsl:"BAND NO QSL",
   t_modo_nuevo:"NEW MODE",t_modo_sin_qsl:"MODE NO QSL",
@@ -1050,6 +1064,17 @@ function renderFilters(flags,force){
             <div class="atype-label">${t("f_"+k)}<small>${t("f_"+k+"_d")}</small></div>
             <label class="toggle"><input type="checkbox" ${flags[k]?"checked":""} onchange="togFlag('${k}',this.checked)"><span class="toggle-slider"></span></label>
           </div>`).join("")}
+        <div class="prop-slider-wrap">
+          <div class="prop-slider-row">
+            <span class="prop-slider-label">📶 ${t("f_prop_min")}</span>
+            <div class="prop-track" id="prop-track" onmousedown="propTrackDown(event)" ontouchstart="propTrackTouch(event)">
+              <div class="prop-fill" id="prop-fill" style="width:${flags.prop_min||0}%"></div>
+              <div class="prop-thumb" id="prop-thumb" style="left:${flags.prop_min||0}%"></div>
+            </div>
+            <span class="prop-slider-val" id="prop-slider-val" style="color:${(flags.prop_min||0)===0?'var(--text-dim)':'var(--accent)'}">${(flags.prop_min||0)===0?t("f_prop_off"):(flags.prop_min||0)+'%'}</span>
+          </div>
+          <div class="prop-hint" id="prop-hint">${(flags.prop_min||0)===0?t("f_prop_hint_off"):t("f_prop_hint_on").replace('{v}',(flags.prop_min||0))}</div>
+        </div>
       </div></div>
     </div>`;
 }
@@ -1069,6 +1094,44 @@ function togModo(m){
 }
 function allModos(a){_flags.modos_activos=a?[...ALL_MODES]:[];renderFilters(_flags,true);saveFlags();}
 function togFlag(k,v){_flags[k]=v;saveFlags();}
+function _propSetVal(v){
+  v=Math.max(0,Math.min(99,Math.round(v)));
+  _flags.prop_min=v;
+  const fill=document.getElementById("prop-fill");
+  const thumb=document.getElementById("prop-thumb");
+  const val=document.getElementById("prop-slider-val");
+  const hint=document.getElementById("prop-hint");
+  const color=v===0?"var(--text-dim)":v<40?"var(--warn)":v<70?"var(--accent)":"var(--green)";
+  if(fill){fill.style.width=v+"%";fill.style.background=v===0?"var(--border)":color;}
+  if(thumb){thumb.style.left=v+"%";thumb.style.background=v===0?"var(--text-dim)":color;}
+  if(val){val.textContent=v===0?t("f_prop_off"):v+"%";val.style.color=color;}
+  if(hint){hint.textContent=v===0?t("f_prop_hint_off"):t("f_prop_hint_on").replace("{v}",v);}
+  saveFlags();
+}
+function propTrackDown(e){
+  e.preventDefault();
+  const track=document.getElementById("prop-track");
+  function move(ev){
+    const r=track.getBoundingClientRect();
+    const pct=Math.max(0,Math.min(1,(ev.clientX-r.left)/r.width));
+    _propSetVal(Math.round(pct*99));
+  }
+  move(e);
+  function up(){document.removeEventListener("mousemove",move);document.removeEventListener("mouseup",up);}
+  document.addEventListener("mousemove",move);
+  document.addEventListener("mouseup",up);
+}
+function propTrackTouch(e){
+  const track=document.getElementById("prop-track");
+  function move(ev){
+    const r=track.getBoundingClientRect();
+    const pct=Math.max(0,Math.min(1,(ev.touches[0].clientX-r.left)/r.width));
+    _propSetVal(Math.round(pct*99));
+  }
+  move(e);
+  track.addEventListener("touchmove",move,{passive:true});
+  track.addEventListener("touchend",()=>track.removeEventListener("touchmove",move),{once:true});
+}
 function saveFlags(){
   clearTimeout(_flagTimer);
   _flagTimer=setTimeout(async()=>{

@@ -51,6 +51,7 @@ FLAGS_DEFAULT = {
     "pais_nuevo":True,"pais_trabajado":True,"banda_nueva":True,"banda_sin_qsl":False,
     "modo_nuevo":True,"modo_sin_qsl":False,
     "bandas_activas":ALL_BANDS[:],"modos_activos":ALL_MODES[:],"iaru_region":1,
+    "prop_min":0,
 }
 
 # ── Traducciones de log ───────────────────────────────────────────────────────
@@ -515,18 +516,6 @@ def call_a_dxcc(call):
                             ml2 = n; mn = nk; mnom = ncty; mlat = lcty; mlon = locty; break
                 break
     if not mn: return 0,"",0.0,0.0
-    # Si la entidad resuelta es deleted, usar cty.dat puro como fallback
-    if "[deleted]" in mnom.lower():
-        for c in candidatos:
-            for n in range(len(c),0,-1):
-                pfx = c[:n]
-                if pfx in _pfx_cty:
-                    ncty,lcty,locty = _pfx_cty[pfx]
-                    if "[deleted]" not in ncty.lower():
-                        for k,(nk,nomk) in _pfx_a_dxcc.items():
-                            if nomk.lower()[:8] == ncty.lower()[:8]:
-                                mn = nk; mnom = ncty; mlat = lcty; mlon = locty; break
-                    break
     if mlat == 0.0 and mlon == 0.0: _,mlat,mlon = coords_por_call(call)
     return mn, mnom, mlat, mlon
 
@@ -658,6 +647,88 @@ def _construir_pfx_a_dxcc_desde_cty():
     log.info("Prefix->DXCC table built from cty.dat: %d prefixes.", len(pfx_map))
 
 # ── Cluster ───────────────────────────────────────────────────────────────────
+_sw_cache = {"kp": 2.0, "sfi": 120.0, "ts": 0.0, "fail": False}
+_sw_lock  = threading.Lock()
+_SW_TTL   = 900  # 15 min
+
+def _fetch_space_weather():
+    with _sw_lock:
+        if time.time() - _sw_cache["ts"] < _SW_TTL:
+            return
+    kp = 2.0; sfi = 120.0; fail = False
+    try:
+        r = requests.get(
+            "https://services.swpc.noaa.gov/json/planetary_k_index_1m.json",
+            timeout=8)
+        if r.status_code == 200:
+            data = r.json()
+            if data: kp = float(data[-1].get("kp_index", 2.0))
+    except Exception as e:
+        log.warning("Space weather Kp fetch failed: %s", e); fail = True
+    try:
+        r2 = requests.get("https://www.hamqsl.com/solarxml.php", timeout=8)
+        if r2.status_code == 200:
+            import xml.etree.ElementTree as ET2
+            root2 = ET2.fromstring(r2.text)
+            el = root2.find(".//solarflux")
+            if el is not None and el.text:
+                sfi = float(el.text)
+    except Exception as e:
+        log.warning("Space weather SFI fetch failed: %s", e); fail = True
+    with _sw_lock:
+        _sw_cache["kp"] = kp; _sw_cache["sfi"] = sfi
+        _sw_cache["ts"] = time.time(); _sw_cache["fail"] = fail
+
+def calcular_propagacion(lat1, lon1, lat2, lon2, freq_mhz):
+    _fetch_space_weather()
+    with _sw_lock:
+        kp = _sw_cache["kp"]; sfi = _sw_cache["sfi"]; fail = _sw_cache["fail"]
+    now_utc   = datetime.datetime.now(datetime.timezone.utc)
+    hour_utc  = now_utc.hour + now_utc.minute / 60.0
+    R = 6371.0
+    φ1, φ2 = math.radians(lat1), math.radians(lat2)
+    Δφ = math.radians(lat2 - lat1); Δλ = math.radians(lon2 - lon1)
+    a  = math.sin(Δφ/2)**2 + math.cos(φ1)*math.cos(φ2)*math.sin(Δλ/2)**2
+    dist_sp = R * 2 * math.atan2(math.sqrt(a), math.sqrt(1-a))
+    dist_lp = 40075 - dist_sp
+    def _score_path(dist_km, mid_lat, mid_lon):
+        solar_hour = (hour_utc + mid_lon / 15.0) % 24
+        foF2 = max(2.0, (sfi - 65) / 10.0 + 4.0)
+        if dist_km < 1000:      m_factor = 2.0
+        elif dist_km < 3000:    m_factor = 3.0
+        elif dist_km < 7000:    m_factor = 3.8
+        else:                   m_factor = 4.5
+        muf = foF2 * m_factor
+        angle = math.pi * (solar_hour - 14.0) / 12.0
+        muf  *= 0.95 + 0.35 * math.cos(angle)
+        if kp <= 2:   geo = 1.0
+        elif kp <= 4: geo = 0.85
+        elif kp <= 6: geo = 0.60
+        else:         geo = 0.35
+        if abs(mid_lat) > 60: geo *= 0.7
+        night_angle = math.pi * (solar_hour - 2.0) / 12.0
+        night_factor = max(0.0, -math.cos(night_angle))
+        ratio = freq_mhz / muf if muf > 0 else 1.0
+        if ratio > 1.1:
+            base = max(0, int((1.1 - ratio) * 200))
+        elif ratio > 0.85:
+            base = min(95, 85 + int((1.0 - abs(ratio - 0.95) * 5) * 10))
+        elif ratio > 0.5:
+            base = 40 + int(ratio * 60)
+        else:
+            base = 60 if dist_km < 1500 else max(5, int(ratio * 80))
+        if freq_mhz < 7 and dist_km > 5000:
+            base = int(base * 0.6)
+        if freq_mhz <= 7 and night_factor > 0:
+            base = min(95, int(base * (1.0 + 0.35 * night_factor)))
+        return max(0, min(99, int(base * geo)))
+    mid_lat_sp = (lat1 + lat2) / 2; mid_lon_sp = (lon1 + lon2) / 2
+    mid_lat_lp = -mid_lat_sp; mid_lon_lp = mid_lon_sp + 180
+    if mid_lon_lp > 180: mid_lon_lp -= 360
+    sp = _score_path(dist_sp, mid_lat_sp, mid_lon_sp)
+    lp = _score_path(dist_lp, mid_lat_lp, mid_lon_lp)
+    return {"sp": sp, "lp": lp, "fail": fail}
+
 def extraer_propagacion(c):
     sp = re.search(r"\[SP:(\d+)",c); lp = re.search(r"LP:(\d+)",c)
     r = {}
@@ -774,6 +845,13 @@ def procesar_linea(linea, solo_registrar=False):
         lat, lon = maidenhead_to_latlon(cfg.get("locator",""))
         if lat: qth_lat, qth_lon = lat, lon
     az_sp, az_lp, dist = calcular_azimut_distancia(qth_lat, qth_lon, dx_lat, dx_lon)
+    prop = calcular_propagacion(qth_lat, qth_lon, dx_lat, dx_lon, freq)
+    prop_min = int(flags.get("prop_min", 0))
+    if prop_min > 0:
+        prop_max = max(prop.get("sp", 0), prop.get("lp", 0))
+        if prop_max < prop_min:
+            log.info(_t("spot_prop_descartado") if "spot_prop_descartado" in _LOG_STRINGS else "SPOT %s descartado por propagación: max(SP,LP)=%d%% < %d%%", call, prop_max, prop_min)
+            return
     prop_str = formatear_propagacion(prop)
 
     time_mode = cfg.get("time_mode","local")
@@ -844,6 +922,11 @@ def enviar_telegram(msg, cfg):
     except requests.RequestException as e: log.error(_t("tg_error"), e)
 
 # ── Hilos monitor ─────────────────────────────────────────────────────────────
+def hilo_space_weather():
+    while True:
+        _fetch_space_weather()
+        time.sleep(900)
+
 def hilo_recarga_log():
     while True:
         try:
@@ -1337,6 +1420,7 @@ def main():
         _verificar_dao()  # solo verificar una vez al arrancar
     threading.Thread(target=hilo_recarga_log,    daemon=True).start()
     threading.Thread(target=hilo_actualizar_cty, daemon=True).start()
+    threading.Thread(target=hilo_space_weather,  daemon=True).start()
 
     if not cfg.get("cluster_host") or not cfg.get("cluster_login"):
         log.info(_t("cluster_not_cfg2"))
