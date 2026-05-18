@@ -6,6 +6,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 COPY band_plans.py .
+COPY log_readers.py .
 COPY main.py .
 COPY templates/ templates/
 COPY static/ static/
