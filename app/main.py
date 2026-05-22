@@ -326,7 +326,7 @@ def construir_pfx_a_dxcc(xml_path):
         except: continue
         for n in range(min(4,len(call)),0,-1):
             pfx = call[:n]
-            if pfx not in pfx_map: pfx_map[pfx] = (dxcc_num, country)
+            if pfx not in pfx_map and pfx in _pfx_cty: pfx_map[pfx] = (dxcc_num, country)
     log.info("Tabla prefijo->DXCC construida: %d prefijos.", len(pfx_map)); return pfx_map
 
 SUFIJOS_OP = {"P","M","MM","AM","QRP","QRPP","LH","LGT","A","B","C","R","0","1","2","3","4","5","6","7","8","9"}
