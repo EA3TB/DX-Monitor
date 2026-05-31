@@ -279,6 +279,7 @@ header{background:var(--bg2);border-bottom:2px solid var(--border);padding:0 20p
   <div class="card">
     <div class="card-title">📡 <span data-i="dx_cluster"></span></div>
     <div class="cluster-row"><span class="cluster-key" data-i="c_host"></span><span class="cluster-val" id="c-host">—</span></div>
+    <div class="cluster-row"><span class="cluster-key" data-i="c_tipo"></span><span class="cluster-val" id="c-type">—</span></div>
     <div class="cluster-row"><span class="cluster-key" data-i="c_estado"></span><span class="cluster-val" id="c-conn">—</span></div>
     <div class="cluster-row"><span class="cluster-key" data-i="c_last_spot"></span><span class="cluster-val" id="c-last">—</span></div>
     <div class="cluster-row"><span class="cluster-key" data-i="c_errors"></span><span class="cluster-val" id="c-err">—</span></div>
@@ -391,7 +392,7 @@ es:{
   dxcc_conf:"DXCC confirmados",pfx_table:"Prefijos tabla",
   xml_active:"Archivo activo:",big_cty:"Big CTY:",pfx_cty:"Prefijos cty.dat:",
   cfg_callsign:"Indicativo:",cfg_locator:"Locator:",cfg_log_type:"Tipo de log:",cfg_xml_dir:"Directorio XML:",cfg_log_path:"Fichero log:",log_path_mdb:"Fichero MDB:",log_path_sqlite:"Fichero SQLite:",log_path_adif:"Fichero ADIF:",cfg_refresh_mins:"Tiempo refresco:",cfg_refresh_mins_unit:"min",
-  dx_cluster:"DX Cluster",c_host:"Host",c_estado:"Estado",
+  dx_cluster:"DX Cluster",c_host:"Host",c_tipo:"Tipo",c_estado:"Estado",
   c_last_spot:"Último spot",c_errors:"Errores reconexión",c_updated:"Actualizado",
   c_connect:"Conectar",c_disconnect:"Desconectar",
   cluster_config:"Configuración cluster",
@@ -434,7 +435,7 @@ en:{
   dxcc_conf:"DXCC confirmed",pfx_table:"Prefix table",
   xml_active:"Active file:",big_cty:"Big CTY:",pfx_cty:"cty.dat prefixes:",
   cfg_callsign:"Callsign:",cfg_locator:"Locator:",cfg_log_type:"Log type:",cfg_xml_dir:"XML directory:",cfg_log_path:"Log file:",log_path_mdb:"MDB file:",log_path_sqlite:"SQLite file:",log_path_adif:"ADIF file:",cfg_refresh_mins:"Refresh interval:",cfg_refresh_mins_unit:"min",
-  dx_cluster:"DX Cluster",c_host:"Host",c_estado:"Status",
+  dx_cluster:"DX Cluster",c_host:"Host",c_tipo:"Type",c_estado:"Status",
   c_last_spot:"Last spot",c_errors:"Reconnect errors",c_updated:"Updated",
   c_connect:"Connect",c_disconnect:"Disconnect",
   cluster_config:"Cluster configuration",
@@ -686,6 +687,7 @@ function updateStats(d){
   st("i-cty",    d.cty_dat_mtime||"—");
   st("i-pfxcty", d.pfx_cty!=null?d.pfx_cty.toLocaleString()+" pfx":"—");
   st("c-host",   d.cluster_host||"—");
+  st("c-type",   d.cluster_type ? d.cluster_type.toUpperCase() : "—");
   const conn=d.cluster_connected;
   const cel=document.getElementById("c-conn");
   cel.textContent=conn?t("connected"):t("disconnected");
