@@ -237,9 +237,11 @@ _status = {
     "log_tail":[],"cty_dat_mtime":"","xml_hrd_path":"",
     "errores":0,"all_bands":ALL_BANDS,"all_modes":ALL_MODES,
     "callsign":"","locator":"","log_source":"hrd_xml","platform":"windows","dao_available":None,
+    "cluster_type":"",
 }
 _status_lock    = threading.Lock()
-_cluster_paused = threading.Event()
+_cluster_paused  = threading.Event()
+_socket_cluster  = None  # socket activo, para cerrarlo desde disconnect
 _log_load_lock  = threading.Lock()  # evita cargas simultáneas del log
 
 # ── SSE ───────────────────────────────────────────────────────────────────────
@@ -943,6 +945,7 @@ def bucle_cluster():
         if _cluster_paused.is_set():
             time.sleep(2); continue
 
+        global _socket_cluster
         s = None; cfg = leer_config()
         if not cfg.get("cluster_host") or not cfg.get("cluster_login"):
             log.info(_t("cluster_not_cfg"))
@@ -951,9 +954,11 @@ def bucle_cluster():
             log.info(_t("cluster_connecting"), cfg["cluster_host"], cfg["cluster_port"])
             s = socket.socket(socket.AF_INET, socket.SOCK_STREAM); s.settimeout(20)
             s.connect((cfg["cluster_host"], int(cfg["cluster_port"])))
+            _socket_cluster = s
             buf = ""
             while "login:" not in buf.lower() and "call:" not in buf.lower():
                 buf += s.recv(1024).decode("utf-8",errors="ignore")
+            banner = buf
             s.sendall((cfg["cluster_login"]+"\r\n").encode()); buf = ""
             t_pwd = time.time()
             while "password:" not in buf.lower():
@@ -962,20 +967,16 @@ def bucle_cluster():
                 except socket.timeout: break
             if "password:" in buf.lower():
                 s.sendall((cfg["cluster_password"]+"\r\n").encode())
-            log.info(_t("cluster_auth"))
+            cluster_type = "ve7cc" if any(k in banner.lower() for k in ["cc cluster","ccc ","ve7cc"]) else "spider"
+            log.info(_t("cluster_auth") + " [%s]", cluster_type)
             with _status_lock:
                 _status["cluster_connected"] = True
                 _status["cluster_host"] = "%s:%d" % (cfg["cluster_host"], cfg["cluster_port"])
+                _status["cluster_type"] = cluster_type
             _escribir_status()
             time.sleep(1)
-            for vcmd in [b"set/ve7cc\r\n", b"set/page 9999\r\n", b"unset/echo\r\n", b"set/ft8\r\n", b"set/skimmer\r\n"]:
+            for vcmd in [b"set/ve7cc\r\n", b"set/page 9999\r\n", b"unset/echo\r\n", b"set/ft8\r\n", b"set/ft4\r\n", b"set/skimmer\r\n"]:
                 s.sendall(vcmd); time.sleep(0.5)
-            time.sleep(1); s.settimeout(2)
-            try:
-                while True:
-                    lft = s.recv(4096).decode("utf-8",errors="ignore")
-                    if not lft: break
-            except socket.timeout: pass
             s.settimeout(5); s.sendall(b"sh/dx 20\r\n")
             log.info(_t("cluster_hist"))
             # Recoger la respuesta del sh/dx 20 por separado (timeout 3s sin nuevos datos)
@@ -993,6 +994,7 @@ def bucle_cluster():
             while True:
                 if time.time()-uka > 180:
                     s.sendall(b"sh/dx 1\r\n"); uka = time.time(); log.info(_t("cluster_keepalive"))
+                if _cluster_paused.is_set(): break
                 try: chunk = s.recv(4096).decode("utf-8",errors="ignore")
                 except socket.timeout: continue
                 if not chunk:
@@ -1002,7 +1004,11 @@ def bucle_cluster():
                 buf += chunk
                 while "\n" in buf:
                     linea, buf = buf.split("\n",1); linea = linea.rstrip("\r")
-                    if linea.strip(): procesar_linea(linea)
+                    if linea.strip():
+                        es_spot = linea.startswith("DX de") or linea.startswith("CC11")
+                        es_prompt = "CCC >" in linea or linea.endswith(">")
+                        if not es_spot and not es_prompt: log.info("[CLUSTER] %s", linea)
+                        procesar_linea(linea)
                 if "disconnected" in buf.lower() or "reconnected" in buf.lower():
                     log.warning(_t("cluster_disconn")); break
         except Exception as e:
@@ -1010,6 +1016,7 @@ def bucle_cluster():
             with _status_lock: _status["cluster_connected"] = False; _status["errores"] += 1
             _escribir_status()
         finally:
+            _socket_cluster = None
             if s:
                 try: s.close()
                 except: pass
@@ -1103,8 +1110,12 @@ def api_cluster_connect():
 
 @app.route("/api/cluster/disconnect", methods=["POST"])
 def api_cluster_disconnect():
+    global _socket_cluster
     log.info(_t("cluster_req_disconn"))
     _cluster_paused.set()
+    if _socket_cluster:
+        try: _socket_cluster.close()
+        except: pass
     with _status_lock: _status["cluster_connected"] = False
     _escribir_status()
     return jsonify({"ok": True})
