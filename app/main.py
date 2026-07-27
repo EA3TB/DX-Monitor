@@ -3,7 +3,7 @@
 
 import xml.etree.ElementTree as ET
 import socket, time, logging, glob, os, re, datetime, zoneinfo, json, threading, math, queue
-from collections import defaultdict
+from collections import defaultdict, deque
 import requests
 from flask import Flask, jsonify, render_template, request, Response, stream_with_context
 from log_readers import (
@@ -56,7 +56,7 @@ class LocalTimezoneFormatter(logging.Formatter):
         ct = datetime.datetime.fromtimestamp(record.created, tz=tz)
         if datefmt:
             return ct.strftime(datefmt)
-        return ct.strftime("%Y-%m-%d %H:%M:%S")
+        return ct.strftime("%d/%m/%y %H:%M:%S")
 
 log = logging.getLogger("dxmonitor")
 log.setLevel(logging.INFO)
@@ -65,6 +65,12 @@ _ch = logging.StreamHandler(); _ch.setFormatter(fmt); log.addHandler(_ch)
 _fh = logging.handlers.TimedRotatingFileHandler(
     LOG_PATH, when="W0", interval=1, backupCount=4, encoding="utf-8")
 _fh.setFormatter(fmt); log.addHandler(_fh)
+
+_log_tail_buffer = deque(maxlen=40)
+class _TailHandler(logging.Handler):
+    def emit(self, record):
+        _log_tail_buffer.append(self.format(record))
+_th = _TailHandler(); _th.setFormatter(fmt); log.addHandler(_th)
 
 # ── Flask ─────────────────────────────────────────────────────────────────────
 app = Flask(__name__)
@@ -85,17 +91,16 @@ _pfx_a_dxcc = {}
 _pfx_cty    = {}
 
 _status = {
-    "version":VERSION,"cluster_host":"","cluster_connected":False,
+    "version":VERSION,"cluster_host":"","cluster_connected":False,"cluster_connecting":False,
     "cluster_last_spot":"","dxcc_confirmados":0,"dxcc_trabajados":0,
     "qsos_total":0,"pfx_cty":0,"pfx_tabla":0,"last_alerts":[],
     "log_tail":[],"cty_dat_mtime":"","xml_hrd_path":"",
     "errores":0,"all_bands":ALL_BANDS,"all_modes":ALL_MODES,
     "callsign":"","locator":"","log_source":"hrd_xml",
-    "cluster_type":"",
 }
 _status_lock = threading.Lock()
-_cluster_paused  = threading.Event()
-_socket_cluster  = None
+_cluster_paused = threading.Event()
+_socket_cluster = None  # socket activo, para cerrarlo desde disconnect
 _log_load_lock  = threading.Lock()  # evita cargas simultáneas del log
 
 # ── SSE ───────────────────────────────────────────────────────────────────────
@@ -210,14 +215,17 @@ def _escribir_status():
         with open(tmp,"w") as f: json.dump(data, f, ensure_ascii=False, default=str)
         os.replace(tmp, STATUS_PATH)
         # Notificar a clientes SSE si hay nuevas alertas
-        sse_push(json.dumps(data.get("last_alerts",[]), ensure_ascii=False))
+        sse_event = {
+            "last_alerts": data.get("last_alerts", []),
+            "cluster_connected": data.get("cluster_connected", False),
+            "cluster_connecting": data.get("cluster_connecting", False),
+            "cluster_host": data.get("cluster_host", ""),
+        }
+        sse_push(json.dumps(sse_event, ensure_ascii=False))
     except Exception as e: log.warning("Error escribiendo status.json: %s", e)
 
 def _leer_log_tail(n=40):
-    try:
-        with open(LOG_PATH,"r",encoding="utf-8",errors="ignore") as f: lines = f.readlines()
-        return [l.rstrip() for l in lines[-n:]]
-    except: return []
+    return list(_log_tail_buffer)[-n:]
 
 def _actualizar_log_tail():
     with _status_lock: _status["log_tail"] = _leer_log_tail()
@@ -717,7 +725,9 @@ def procesar_linea(linea):
 
     time_mode = cfg.get("time_mode","local")
     if time_mode == "utc":
-        hora_str   = hora.replace("Z","") + " UTC"
+        now_utc_tg = datetime.datetime.now(datetime.timezone.utc)
+        hora_hhmm  = hora.replace("Z","")
+        hora_str   = "%s:%s - %s" % (hora_hhmm[:2], hora_hhmm[2:4], now_utc_tg.strftime("%d/%m/%y"))
         hora_label = "UTC Time" if lang=="en" else "Hora UTC"
     else:
         hora_str   = utc_a_local(hora, cfg.get("timezone","Europe/Madrid"))
@@ -736,7 +746,7 @@ def procesar_linea(linea):
     except Exception:
         now_dt = datetime.datetime.now(datetime.timezone.utc)
     now_str = now_dt.strftime("%H:%M:%S")
-    now_date = now_dt.strftime("%d/%m/%Y")
+    now_date = now_dt.strftime("%d/%m/%y")
     entry = {"ts":now_str,"call":call,"dxcc":nombre,"freq":"%.3f"%freq,
              "banda":banda,"modo":modo,"tipo":tipo,"icono":icono,"spotter":spotter,"date":now_date}
     with _status_lock:
@@ -762,7 +772,7 @@ def utc_a_local(hora_utc_str, tz="Europe/Madrid"):
         now_utc = datetime.datetime.now(datetime.timezone.utc)
         hl = now_utc.replace(hour=int(hora_utc_str[:2]), minute=int(hora_utc_str[2:4]),
                              second=0, microsecond=0).astimezone(zoneinfo.ZoneInfo(tz))
-        return hl.strftime("%H:%M (%Z)")
+        return hl.strftime("%H:%M - %d/%m/%y")
     except: return hora_utc_str + " UTC"
 
 def enviar_telegram(msg, cfg):
@@ -802,14 +812,27 @@ def bucle_cluster():
             log.info("Cluster no configurado. Configure desde el dashboard.")
             _cluster_paused.set(); continue
         try:
-            log.info("Conectando a %s:%d...", cfg["cluster_host"], cfg["cluster_port"])
-            s = socket.socket(socket.AF_INET, socket.SOCK_STREAM); s.settimeout(20)
+            log.info("── Conectando a %s:%d (login: %s)...", cfg["cluster_host"], cfg["cluster_port"], cfg["cluster_login"])
+            with _status_lock: _status["cluster_connecting"] = True
+            _escribir_status()
+            s = socket.socket(socket.AF_INET, socket.SOCK_STREAM); s.settimeout(45)
             s.connect((cfg["cluster_host"], int(cfg["cluster_port"])))
             _socket_cluster = s
             buf = ""
-            while "login:" not in buf.lower() and "call:" not in buf.lower():
-                buf += s.recv(1024).decode("utf-8",errors="ignore")
-            banner = buf
+            while not any(k in buf.lower() for k in ["login:","call:","callsign","indicativo"]):
+                raw = s.recv(1024)
+                # Responder negociación IAC telnet para que el servidor mande el prompt
+                i = 0; out = b""
+                while i < len(raw):
+                    if raw[i] == 0xFF and i+2 < len(raw):  # IAC
+                        cmd, opt = raw[i+1], raw[i+2]
+                        if cmd == 0xFD: out += bytes([0xFF, 0xFC, opt])  # DO→WONT
+                        elif cmd == 0xFB: out += bytes([0xFF, 0xFE, opt])  # WILL→DONT
+                        i += 3
+                    else:
+                        i += 1
+                if out: s.sendall(out)
+                buf += raw.decode("utf-8", errors="ignore")
             s.sendall((cfg["cluster_login"]+"\r\n").encode()); buf = ""
             t_pwd = time.time()
             while "password:" not in buf.lower():
@@ -818,52 +841,71 @@ def bucle_cluster():
                 except socket.timeout: break
             if "password:" in buf.lower():
                 s.sendall((cfg["cluster_password"]+"\r\n").encode())
-            cluster_type = "ve7cc" if any(k in banner.lower() for k in ["cc cluster","ccc ","ve7cc"]) else "spider"
-            log.info("Autenticado. Tipo de cluster: %s. Escuchando spots en tiempo real...", cluster_type)
+            log.info("── Conectado a %s:%d como %s. Escuchando spots.", cfg["cluster_host"], cfg["cluster_port"], cfg["cluster_login"])
             with _status_lock:
                 _status["cluster_connected"] = True
+                _status["cluster_connecting"] = False
                 _status["cluster_host"] = "%s:%d" % (cfg["cluster_host"], cfg["cluster_port"])
-                _status["cluster_type"] = cluster_type
             _escribir_status()
             time.sleep(1)
-            for vcmd in [b"set/ve7cc\r\n", b"set/page 9999\r\n", b"unset/echo\r\n", b"set/ft8\r\n", b"set/ft4\r\n", b"set/skimmer\r\n"]:
+            for vcmd in [b"set/ve7cc\r\n", b"set/page 9999\r\n", b"unset/echo\r\n", b"set/ft8\r\n", b"set/skimmer\r\n"]:
                 s.sendall(vcmd); time.sleep(0.5)
+            time.sleep(1); s.settimeout(2)
+            try:
+                while True:
+                    lft = s.recv(4096).decode("utf-8",errors="ignore")
+                    if not lft: break
+            except socket.timeout: pass
             s.settimeout(5); s.sendall(b"sh/dx 20\r\n")
             log.info("Solicitados ultimos 20 spots.")
             buf = ""; uka = time.time()
             while True:
+                if _cluster_paused.is_set():
+                    log.info("── Desconectado de %s:%d.", cfg["cluster_host"], cfg["cluster_port"])
+                    with _status_lock: _status["cluster_connected"] = False; _status["cluster_connecting"] = False
+                    _escribir_status(); break
                 if time.time()-uka > 180:
-                    s.sendall(b"sh/dx 1\r\n"); uka = time.time(); log.info("Keepalive enviado.")
-                if _cluster_paused.is_set(): break
+                    s.sendall(b"sh/dx 1\r\n"); uka = time.time(); log.info("── Keepalive a %s:%d.", cfg["cluster_host"], cfg["cluster_port"])
                 try: chunk = s.recv(4096).decode("utf-8",errors="ignore")
                 except socket.timeout: continue
                 if not chunk:
-                    log.warning("Conexion cerrada por el cluster.")
-                    with _status_lock: _status["cluster_connected"] = False
+                    log.warning("── %s:%d cerró la conexión.", cfg["cluster_host"], cfg["cluster_port"])
+                    with _status_lock: _status["cluster_connected"] = False; _status["cluster_connecting"] = False
                     _escribir_status(); break
                 buf += chunk
                 while "\n" in buf:
                     linea, buf = buf.split("\n",1); linea = linea.rstrip("\r")
-                    if not linea.strip(): continue
-                    es_spot = linea.startswith("DX de") or linea.startswith("CC11")
-                    if not es_spot: log.info("[CLUSTER] %s", linea)
-                    procesar_linea(linea)
+                    if linea.strip(): procesar_linea(linea)
                 if "disconnected" in buf.lower() or "reconnected" in buf.lower():
-                    log.warning("Desconexion detectada."); break
+                    log.warning("── Desconexión detectada en %s:%d.", cfg["cluster_host"], cfg["cluster_port"])
+                    with _status_lock: _status["cluster_connected"] = False; _status["cluster_connecting"] = False
+                    _escribir_status(); break
         except Exception as e:
-            log.warning("Error de conexion: %s", e)
-            with _status_lock: _status["cluster_connected"] = False; _status["errores"] += 1
-            _escribir_status()
+            if _cluster_paused.is_set():
+                pass  # socket cerrado por disconnect, no es un error
+            else:
+                log.warning("── Error conectando a %s:%d — %s", cfg["cluster_host"], cfg["cluster_port"], e)
+                with _status_lock: _status["cluster_connected"] = False; _status["cluster_connecting"] = True; _status["errores"] += 1
+                _escribir_status()
         finally:
             _socket_cluster = None
             if s:
                 try: s.close()
                 except: pass
+            if _cluster_paused.is_set():
+                log.info("── Desconectado de %s:%d.", cfg["cluster_host"], cfg["cluster_port"])
+                with _status_lock: _status["cluster_connected"] = False; _status["cluster_connecting"] = False
+                _escribir_status()
 
         if _cluster_paused.is_set():
-            log.info("Cluster desconectado. Esperando comando connect..."); continue
+            log.info("── %s:%d desconectado. Esperando comando conectar.", cfg["cluster_host"], cfg["cluster_port"])
+            with _status_lock: _status["cluster_connected"] = False; _status["cluster_connecting"] = False
+            _escribir_status(); continue
 
-        log.info("Reconectando en 30s..."); time.sleep(30)
+        log.info("── Reintentando %s:%d en 30s...", cfg["cluster_host"], cfg["cluster_port"])
+        for _ in range(30):
+            if _cluster_paused.is_set(): break
+            time.sleep(1)
 
 # ── Rutas Flask ───────────────────────────────────────────────────────────────
 @app.route("/")
@@ -943,19 +985,20 @@ def api_cluster_connect():
     cfg = leer_config()
     if not cfg.get("cluster_host") or not cfg.get("cluster_login"):
         return jsonify({"ok": False, "error": "Host o login no configurados"}), 400
-    log.info("Conexion solicitada desde dashboard.")
+    log.info("── Conectar solicitado: %s:%d (login: %s)", cfg.get("cluster_host","?"), cfg.get("cluster_port","?"), cfg.get("cluster_login","?"))
     _cluster_paused.clear()
     return jsonify({"ok": True})
 
 @app.route("/api/cluster/disconnect", methods=["POST"])
 def api_cluster_disconnect():
     global _socket_cluster
-    log.info("Desconexion solicitada desde dashboard.")
+    cfg2 = leer_config()
+    log.info("── Desconectar solicitado: %s:%d", cfg2.get("cluster_host","?"), cfg2.get("cluster_port","?"))
     _cluster_paused.set()
     if _socket_cluster:
         try: _socket_cluster.close()
         except: pass
-    with _status_lock: _status["cluster_connected"] = False
+    with _status_lock: _status["cluster_connected"] = False; _status["cluster_connecting"] = False
     _escribir_status()
     return jsonify({"ok": True})
 

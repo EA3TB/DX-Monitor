@@ -6,7 +6,7 @@ import socket, time, logging, glob, os, re, datetime, zoneinfo, json, threading,
 import sys, webbrowser
 from PIL import Image, ImageDraw
 import pystray
-from collections import defaultdict
+from collections import defaultdict, deque
 import requests
 from flask import Flask, jsonify, render_template, request, Response, stream_with_context
 from log_readers import (
@@ -204,6 +204,12 @@ _fh.suffix = "%Y-%m-%d"   # evita los ":" que Windows no permite en nombres de f
 _fh.setFormatter(fmt)
 log.addHandler(_fh)
 
+_log_tail_buffer = deque(maxlen=40)
+class _TailHandler(logging.Handler):
+    def emit(self, record):
+        _log_tail_buffer.append(self.format(record))
+_th = _TailHandler(); _th.setFormatter(fmt); log.addHandler(_th)
+
 # ── Flask ─────────────────────────────────────────────────────────────────────
 # Resolver templates y statics tanto en modo script como en modo .exe
 if getattr(sys, "frozen", False):
@@ -363,10 +369,7 @@ def _escribir_status():
     except Exception as e: log.warning(_t("status_write_error"), e)
 
 def _leer_log_tail(n=40):
-    try:
-        with open(LOG_PATH,"r",encoding="utf-8",errors="ignore") as f: lines = f.readlines()
-        return [l.rstrip() for l in lines[-n:]]
-    except: return []
+    return list(_log_tail_buffer)[-n:]
 
 def _actualizar_log_tail():
     with _status_lock: _status["log_tail"] = _leer_log_tail()
